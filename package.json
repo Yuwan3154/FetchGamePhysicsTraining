@@ -1,0 +1,9 @@
+{
+    "name": "org.johnson-lab-janelia.fetch-game-physics-training",
+    "displayName": "FetchGamePhysics MLAgents Training",
+    "version": "0.1.0",
+    "unity": "2021.2",
+    "description": "MLAgents Training for FetchGamePhysics",
+    "keywords": [],
+    "dependencies": {}
+}

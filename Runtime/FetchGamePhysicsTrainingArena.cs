@@ -1,0 +1,304 @@
+using Unity.MLAgents;
+using UnityEngine;
+
+/// <summary>
+/// An arena for training an agent in the fetch game:
+/// <seealso href="https://github.com/JohnsonLabJanelia/FetchGamePhysics/tree/main/FetchArenaProject"/>
+/// </summary>
+public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
+{
+    public static readonly string TAG_BALL      = "Ball";
+    public static readonly string TAG_BOUNDARY  = "Boundary";
+    public static readonly string TAG_RAMP      = "Ramp";
+    public static readonly string TAG_GROUND    = "Ground";
+
+    public float TurfRadius
+    {
+        get { return _turfRadius; }
+    }
+    private float _turfRadius = 0.0f;
+    private float _turfY = 0.0f;
+    private float _turfThickness = 0.0f;
+
+    private Vector3 _rampSize = Vector3.zero;
+
+    private float _ballRadius = 0.0f;
+
+    public static readonly float RAMP_ANGLE_WIGGLE_DEGS = 10.0f;
+    public static readonly float AGENT_EASY_CASE_PROBABILITY = 0.15f;
+
+    /// <summary>
+    /// Performs the initial setup of the objects involved in training (except for
+    /// <see cref="FetchGamePhysicsTrainingAgent"/> which has its own Setup function,
+    /// called after this one is called).
+    /// </summary>
+    /// <param name="helper">A class with helper functions for tasks like adding tags or 
+    /// creating materials</param>
+    public override void Setup(Janelia.IEasyMLSetupHelper helper)
+    {
+        base.Setup(helper);
+
+        helper.CreateTag(TAG_BALL);
+        helper.CreateTag(TAG_BOUNDARY);
+        helper.CreateTag(TAG_RAMP);
+        helper.CreateTag(TAG_GROUND);
+
+        if (!name.StartsWith("TrainingArena"))
+        {
+            name = "TrainingArena";
+        }
+
+        Reparent();
+
+        FindTurfMetrics();
+        FindRampMetrics();
+        FindBallMetrics();
+    }
+
+    private void Reparent()
+    {
+        GameObject simpleArena = Reparent("SimpleArena");
+        if (simpleArena != null)
+        {
+            Transform wallTransform = simpleArena.transform.Find("Wall");
+            if (wallTransform != null)
+            {
+                wallTransform.gameObject.tag = TAG_BOUNDARY;
+            }
+            Transform turfTransform = simpleArena.transform.Find("Turf");
+            if (turfTransform != null)
+            {
+                turfTransform.gameObject.tag = TAG_GROUND;
+            }
+        }
+
+        GameObject ramp = Reparent("ramp_unit");
+        if (ramp != null)
+        {
+            ramp.tag = TAG_RAMP;
+        }
+
+        Reparent("Table");
+        Reparent("HollowCyl");
+        GameObject sphere = Reparent("Sphere");
+        if (sphere != null)
+        {
+            sphere.tag = TAG_BALL;
+        }
+
+        Reparent("Floor");
+
+        Reparent("Bumblebee");
+        Reparent("Grimlock");
+        Reparent("Optimus");
+
+        // The "FetchGamPhysics" project does have this mispelling in it.
+        Reparent("ExprimenterView");
+
+        CleanupUnused();
+
+        FixMeshCollider(TAG_GROUND);
+        FixMeshCollider(TAG_BOUNDARY);
+    }
+
+    private GameObject Reparent(string childName)
+    {
+        Transform childTransform = transform.Find(childName);
+        if (childTransform != null)
+        {
+            return childTransform.gameObject;
+        }
+        GameObject toReparent = GameObject.Find(childName);
+        if (toReparent != null)
+        {
+            toReparent.transform.parent = transform;
+            return toReparent;
+        }
+        return null;
+    }
+
+    private void CleanupUnused()
+    {
+        Deactivate("Cube");
+        Deactivate("Goal");
+        Deactivate("Publisher");
+        Deactivate("Canvas");
+        Deactivate("EventSystem");
+    }
+
+    private void Deactivate(string name)
+    {
+        GameObject obj = GameObject.Find(name);
+        if (obj != null)
+        {
+            obj.SetActive(false);
+        }
+    }
+
+    private void FixMeshCollider(string tag)
+    {
+        GameObject obj = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, tag);
+        if (obj != null)
+        {
+            MeshCollider collider = obj.GetComponent<MeshCollider>() as MeshCollider;
+            collider.enabled = true;
+
+            // The ball passes through the boundary if the boundary collider is marked convex,
+            // perhaps because the ball starts out inside that convex region, Unity ignores
+            // internal collisions.
+            collider.convex = false;
+        }
+    }
+
+    public override void PlaceRandomly()
+    {
+        FindTurfMetrics();
+        FindRampMetrics();
+        FindBallMetrics();
+        PlaceRamp();
+        PlaceBall();
+        PlaceAgent();
+    }
+
+    private void FindTurfMetrics()
+    {
+        GameObject turf = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_GROUND);
+        if (turf != null)
+        {
+            _turfY = turf.transform.localPosition.y;
+
+            MeshFilter turfMeshFilter = turf.GetComponent<MeshFilter>() as MeshFilter;
+            if ((turfMeshFilter != null) && (turfMeshFilter.sharedMesh != null))
+            {
+                Vector3 turfSize = turfMeshFilter.sharedMesh.bounds.size;
+                _turfRadius = turfSize.x / 2.0f;
+                // When placed in the scene, the turf object is rotated -90 around x, so
+                // its thickness is the original z dimension, which becomes the y dimension.
+                _turfThickness = turfSize.z;
+            }
+        }
+    }
+
+    private void FindRampMetrics()
+    {
+        GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
+        if (ramp != null)
+        {
+            MeshFilter rampMeshFilter = ramp.GetComponent<MeshFilter>() as MeshFilter;
+            if ((rampMeshFilter != null) && (rampMeshFilter.sharedMesh != null))
+            {
+                Vector3 rampScale = ramp.transform.localScale;
+                _rampSize = Vector3.Scale(rampMeshFilter.sharedMesh.bounds.size, rampScale);
+            }
+        }
+    }
+
+    private void FindBallMetrics()
+    {
+        GameObject ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_BALL);
+        if (ball != null)
+        {
+            _ballRadius = ball.transform.localScale.x / 2;
+        }
+    }
+
+    private void PlaceRamp()
+    {
+        GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
+        if (ramp != null)
+        {
+            float angle = UnityEngine.Random.Range(0, 360);
+            float radius = UnityEngine.Random.Range(_turfRadius / 3, _turfRadius);
+
+            Vector3 p = Matrix4x4.Rotate(Quaternion.Euler(0, angle, 0)).MultiplyVector(Vector3.forward);
+            p *= radius;
+            p.y = ramp.transform.localPosition.y;
+            ramp.transform.localPosition = p;
+
+            float angleLocalY = angle;
+            angleLocalY += UnityEngine.Random.Range(-RAMP_ANGLE_WIGGLE_DEGS, RAMP_ANGLE_WIGGLE_DEGS);
+            if (angleLocalY > 360)
+            {
+                angleLocalY -= 360;
+            }
+            ramp.transform.localEulerAngles = new Vector3(0, angleLocalY, 0);
+        }
+    }
+
+    private void PlaceBall()
+    {
+        GameObject ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_BALL);
+        if (ball != null)
+        {
+            Rigidbody ballRigidbody = ball.GetComponent<Rigidbody>();
+            if (ballRigidbody != null)
+            {
+                float drag = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_angular_drag", 0.05f);
+                ballRigidbody.angularDrag = drag;
+            }
+
+            GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
+            if (ramp != null)
+            {
+                Vector3 r = ramp.transform.localEulerAngles;
+                ball.transform.localEulerAngles = new Vector3(0, r.y, 0);
+
+                Vector3 p = ramp.transform.localPosition;
+                p.y += _rampSize.y + _ballRadius;
+                // Minus because `ramp.transform.forward` points out from the turf center.
+                p -= ramp.transform.forward * 3 * _ballRadius;
+                ball.transform.localPosition = p;
+            }
+        }
+    }
+
+    private void PlaceAgent()
+    {
+        GameObject agent = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, Janelia.EasyMLAgent.TAG_AGENT);
+        if (agent != null)
+        {
+            Transform agentBody = agent.transform.Find("Body");
+            Vector3 agentScale = (agentBody != null) ? agentBody.localScale : Vector3.one;
+            GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
+
+            bool safe = false;
+            float angle = 0;
+            int attempts = 0;
+            while (!safe && (attempts++ < 100))
+            {
+                angle = UnityEngine.Random.Range(0, 360);
+                Vector3 p = Vector3.zero;
+                float padding = Mathf.Max(agentScale.x, agentScale.z);
+                if ((ramp != null) && (UnityEngine.Random.value < AGENT_EASY_CASE_PROBABILITY))
+                {
+                    p = ramp.transform.localPosition;
+                    float d = UnityEngine.Random.Range(_rampSize.z, p.magnitude + _turfRadius - padding);
+                    // Minus because `ramp.transform.forward` points out from the turf center.
+                    Vector3 q = -ramp.transform.forward;
+                    p += d * q;
+                }
+                else
+                {
+                    p = Matrix4x4.Rotate(Quaternion.Euler(0, angle, 0)).MultiplyVector(Vector3.forward);
+                    p.y = ramp.transform.localPosition.y;
+                    float radius = UnityEngine.Random.Range(0, _turfRadius - padding);
+                    p *= radius;
+                }
+                p.y = _turfY + _turfThickness / 2;
+                agent.transform.localPosition = p;
+
+                // Continue trying placements until there is a safe configuration, with the agent's
+                // body not overlapping the ramp.
+                float rampPadding = Mathf.Max(_rampSize.x, _rampSize.z);
+                safe = Vector3.Distance(ramp.transform.localPosition, p) > padding + rampPadding;
+            }
+
+            float angleLocalY = angle + 180;
+            if (angleLocalY > 360)
+            {
+                angleLocalY -= 360;
+            }
+            agent.transform.localEulerAngles = new Vector3(0, angleLocalY, 0);
+        }
+    }
+}
