@@ -246,7 +246,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
                 Vector3 p = ramp.transform.localPosition;
                 p.y += _rampSize.y + _ballRadius;
                 // Minus because `ramp.transform.forward` points out from the turf center.
-                p -= ramp.transform.forward * 3 * _ballRadius;
+                p -= ramp.transform.forward * 4 * _ballRadius;
                 ball.transform.localPosition = p;
             }
         }
