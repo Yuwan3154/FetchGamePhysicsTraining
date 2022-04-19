@@ -42,7 +42,7 @@ environment_parameters:
       - name: LessonA
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 250
           threshold: -0.5
@@ -50,7 +50,7 @@ environment_parameters:
       - name: LessonB
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 200
           threshold: -0.4
@@ -58,7 +58,7 @@ environment_parameters:
       - name: LessonC
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 150
           threshold: -0.25
@@ -66,7 +66,7 @@ environment_parameters:
       - name: LessonD
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.0
@@ -74,7 +74,7 @@ environment_parameters:
       - name: LessonE
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.25
@@ -82,7 +82,7 @@ environment_parameters:
       - name: LessonF
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.4
@@ -90,7 +90,7 @@ environment_parameters:
       - name: LessonG
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.7
@@ -102,7 +102,7 @@ environment_parameters:
       - name: LessonA
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 250
           threshold: -0.5
@@ -110,7 +110,7 @@ environment_parameters:
       - name: LessonB
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 200
           threshold: -0.4
@@ -118,7 +118,7 @@ environment_parameters:
       - name: LessonC
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 150
           threshold: -0.25
@@ -126,7 +126,7 @@ environment_parameters:
       - name: LessonD
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 150
           threshold: 0.0
@@ -134,7 +134,7 @@ environment_parameters:
       - name: LessonE
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.25
@@ -142,7 +142,7 @@ environment_parameters:
       - name: LessonF
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.4
@@ -150,7 +150,7 @@ environment_parameters:
       - name: LessonG
         completion_criteria:
           measure: reward
-          behavior: Fetch02
+          behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.7
