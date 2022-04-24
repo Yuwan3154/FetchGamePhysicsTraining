@@ -37,7 +37,7 @@ behaviors:
     summary_freq: 10000
     threaded: false
 environment_parameters:
-  ball_angular_drag:
+  ball_max_angular_velocity:
     curriculum:
       - name: LessonA
         completion_criteria:
@@ -45,58 +45,58 @@ environment_parameters:
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 250
-          threshold: -0.5
-        value: 4.0
+          threshold: 0
+        value: 3.0
       - name: LessonB
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 200
-          threshold: -0.4
-        value: 3.0
+          threshold: 0.2
+        value: 3.25
       - name: LessonC
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 150
-          threshold: -0.25
-        value: 1.5
+          threshold: 0.4
+        value: 3.5
       - name: LessonD
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.0
-        value: 0.5
+          threshold: 0.6
+        value: 4
       - name: LessonE
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.25
-        value: 0.2
+          threshold: 0.7
+        value: 4.5
       - name: LessonF
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.4
-        value: 0.1
+          threshold: 0.75
+        value: 5
       - name: LessonG
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.7
-        value: 0.075
+          threshold: 0.8
+        value: 6
       - name: LessonFinal
-        value: 0.05
+        value: 7
   ball_fetched_threshold:
     curriculum:
       - name: LessonA
@@ -105,47 +105,47 @@ environment_parameters:
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 250
-          threshold: -0.5
-        value: 0.4
+          threshold: 0
+        value: 0.25
       - name: LessonB
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 200
-          threshold: -0.4
-        value: 0.3
+          threshold: 0.2
+        value: 0.22
       - name: LessonC
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 150
-          threshold: -0.25
-        value: 0.2
+          threshold: 0.4
+        value: 0.18
       - name: LessonD
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 150
-          threshold: 0.0
-        value: 0.15
+          threshold: 0.6
+        value: 0.16
       - name: LessonE
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.25
-        value: 0.1
+          threshold: 0.7
+        value: 0.12
       - name: LessonF
         completion_criteria:
           measure: reward
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.4
+          threshold: 0.75
         value: 0.05
       - name: LessonG
         completion_criteria:
@@ -153,7 +153,7 @@ environment_parameters:
           behavior: FetchGamePhysics
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 0.7
+          threshold: 0.8
         value: 0.025
       - name: LessonFinal
         value: 0.0
