@@ -51,6 +51,8 @@ This package (`org.johnson-lab-janelia.fetch-game-physics-training`) prepares th
     ```
     The `trainer_config.yaml` file from the root directory (folder) of [this repo](https://github.com/JohnsonLabJanelia/FetchGamePhysicsTraining) is an reasonable starting point.
 
+1. Press play in the Unity editor to start the training.
+
 1. To monitor results, run a command like the following in the directory (folder) where `mlagents-learn` was run:
     ```
     tensorboard --logdir results --port 6006
@@ -60,3 +62,7 @@ This package (`org.johnson-lab-janelia.fetch-game-physics-training`) prepares th
 1. If training indicates that the code needs to be refined, the next round of training can proceed immediately after changes to the `CollectObservations`, `OnActionReceived`, and `OnCollisionEnter` methods.  Changes to other code could require choosing the "GameObject/Create Easy ML Arena and Agent" menu item again.  See the [documentation for `org.janelia.easy-ml-agents`](https://github.com/JaneliaSciComp/janelia-unity-toolkit/tree/master/org.janelia.easy-ml-agents#5-refine) for more details.
 
 1. If any aspect of this system does not work as it should, please [add an issue for this repo](https://github.com/JohnsonLabJanelia/FetchGamePhysicsTraining/issues).
+
+## Training Performance
+
+As discussed in the [`org.janelia.easy-ml-agents` documentation](https://github.com/JaneliaSciComp/janelia-unity-toolkit/tree/master/org.janelia.easy-ml-agents#training-performance), training is fastest when run with a stand-alone executable, not with the editor (as described above).  With this approach, it should be possible for the executable to contain at least 27 instances of the arena, arranged in a 3 x 3 x 3 cube.  With this arranement, training to a full 5 million steps completes in a couple of hours, even on a laptop.
