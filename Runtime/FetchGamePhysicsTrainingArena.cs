@@ -25,7 +25,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
     private float _ballRadius = 0.0f;
 
     public static readonly float RAMP_ANGLE_WIGGLE_DEGS = 10.0f;
-    public static readonly float AGENT_EASY_CASE_PROBABILITY = 0.15f;
+    public static readonly float AGENT_EASY_CASE_PROBABILITY = 0.0f;
 
     /// <summary>
     /// Performs the initial setup of the objects involved in training (except for
@@ -233,8 +233,8 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
             Rigidbody ballRigidbody = ball.GetComponent<Rigidbody>();
             if (ballRigidbody != null)
             {
-                float drag = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_angular_drag", 0.05f);
-                ballRigidbody.angularDrag = drag;
+                float maxVel = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_max_angular_velocity", 7.0f);
+                ballRigidbody.maxAngularVelocity = maxVel;
             }
 
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);

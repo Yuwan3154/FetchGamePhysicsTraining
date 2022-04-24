@@ -12,7 +12,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 {
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
-    public override int VectorObservationSize { get; protected set; } = 11;
+    public override int VectorObservationSize { get; protected set; } = 6;
 
 #if false
     // Overriding this virtual property would be an alternative to setting its value in `Setup`, but
@@ -45,7 +45,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 
         base.Setup(helper);
 
-        moveForce = 15.0f;
+        moveForce = 10.0f;
     }
 
     /// <summary>
@@ -93,29 +93,50 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
             return;
         }
 
+        // Normalize observations to [0, 1] or [-1, 1]
+        // https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Design-Agents.md#normalization
+
         // One observation
         float agentRotation = transform.localEulerAngles.y / 360;
         sensor.AddObservation(agentRotation);
 
         Vector3 toBall = _ball.transform.position - transform.position;
-        // Three observations (the vector components)
-        // Normalizing makes it just a direction
-        sensor.AddObservation(toBall.normalized);
+        // [0, 180] for forward or backward
+        float angleBetween = Vector3.Angle(transform.forward.normalized, toBall.normalized);
+        // Negative for backward
+        float sign = Mathf.Sign(Vector3.Dot(transform.forward, toBall));
+        angleBetween = sign * angleBetween / 180;
+        // One observation
+        sensor.AddObservation(angleBetween);
 
         // One observation
         // Dividing makes it a relative distance
-        sensor.AddObservation(toBall.magnitude / GetTurfDiameter());
+        float turfDiameter = GetTurfDiameter();
+        sensor.AddObservation(toBall.magnitude / turfDiameter);
 
         Vector3 agentVelocity = _agentRigidbody.velocity;
-        // Three observations (the vector components)
-        sensor.AddObservation(agentVelocity.normalized);
-
         Vector3 ballVelocity = _ballRigidBody.velocity;
-        // Three observations (the vector components)
-        sensor.AddObservation(ballVelocity.normalized);
 
-        // Nine total observations (1 + 3 + 1 + 3 + 3)
-        Debug.Assert(VectorObservationSize == 11, "Incorrect observation count");
+        // Normalize
+        float agentSpeed = agentVelocity.magnitude / turfDiameter;
+        float ballSpeed = ballVelocity.magnitude / turfDiameter;
+
+        // But this normalization may make the values very small, so use a heuristic to increase them
+        float speedScale = 4.0f;
+        agentSpeed = Mathf.Clamp01(agentSpeed * speedScale);
+        ballSpeed = Mathf.Clamp01(ballSpeed * speedScale);
+
+        // One observation
+        sensor.AddObservation(agentSpeed);
+        // One observation
+        sensor.AddObservation(ballSpeed);
+
+        float velDot = Vector3.Dot(agentVelocity.normalized, ballVelocity.normalized);
+        // One observation
+        sensor.AddObservation(velDot);
+
+        // Six total observations (1 + 1 + 1 + 1 + 1 + 1)
+        Debug.Assert(VectorObservationSize == 6, "Incorrect observation count");
     }
 
     /// <summary>
