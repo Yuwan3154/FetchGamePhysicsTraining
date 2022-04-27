@@ -12,7 +12,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 {
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
-    public override int VectorObservationSize { get; protected set; } = 6;
+    public override int VectorObservationSize { get; protected set; } = 5;
 
 #if false
     // Overriding this virtual property would be an alternative to setting its value in `Setup`, but
@@ -45,7 +45,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 
         base.Setup(helper);
 
-        moveForce = 10.0f;
+        moveForce = 1.0f;
     }
 
     /// <summary>
@@ -96,29 +96,28 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         // Normalize observations to [0, 1] or [-1, 1]
         // https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Design-Agents.md#normalization
 
-        // One observation
-        float agentRotation = transform.localEulerAngles.y / 360;
-        sensor.AddObservation(agentRotation);
-
         Vector3 toBall = _ball.transform.position - transform.position;
-        // [0, 180] for forward or backward
-        float angleBetween = Vector3.Angle(transform.forward.normalized, toBall.normalized);
-        // Negative for backward
-        float sign = Mathf.Sign(Vector3.Dot(transform.forward, toBall));
-        angleBetween = sign * angleBetween / 180;
+        float angleForward = SignedAngleNormalized(transform.forward, toBall);
         // One observation
-        sensor.AddObservation(angleBetween);
+        sensor.AddObservation(angleForward);
 
         // One observation
         // Dividing makes it a relative distance
         float turfDiameter = GetTurfDiameter();
         sensor.AddObservation(toBall.magnitude / turfDiameter);
 
-        Vector3 agentVelocity = _agentRigidbody.velocity;
         Vector3 ballVelocity = _ballRigidBody.velocity;
 
+        // Angle will be 0 if the ball is moving directly away from the agent,
+        // or if the ball is not moving.  Angle will be negative if the ball is moving
+        // to the left of the agent's forward direction, and positive for the right.
+        // Angle will be 1 (or maybe -1) if the ball is moving directly towards the agent.
+        float angleVelocity = SignedAngleNormalized(transform.forward, ballVelocity);
+        // One observation
+        sensor.AddObservation(angleVelocity);
+
         // Normalize
-        float agentSpeed = agentVelocity.magnitude / turfDiameter;
+        float agentSpeed = _agentRigidbody.velocity.magnitude / turfDiameter;
         float ballSpeed = ballVelocity.magnitude / turfDiameter;
 
         // But this normalization may make the values very small, so use a heuristic to increase them
@@ -131,12 +130,8 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         // One observation
         sensor.AddObservation(ballSpeed);
 
-        float velDot = Vector3.Dot(agentVelocity.normalized, ballVelocity.normalized);
-        // One observation
-        sensor.AddObservation(velDot);
-
-        // Six total observations (1 + 1 + 1 + 1 + 1 + 1)
-        Debug.Assert(VectorObservationSize == 6, "Incorrect observation count");
+        // Six total observations (1 + 1 + 1 + 1 + 1)
+        Debug.Assert(VectorObservationSize == 5, "Incorrect observation count");
     }
 
     /// <summary>
@@ -193,5 +188,15 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
     {
         FetchGamePhysicsTrainingArena fetchArena = GetComponentInParent<FetchGamePhysicsTrainingArena>();
         return (fetchArena != null) ? 2.0f * fetchArena.TurfRadius : 1.0f;
+    }
+
+    private float SignedAngleNormalized(Vector3 a, Vector3 b)
+    {
+        // [0, 180] for left or right
+        float angleBetween = Vector3.Angle(a.normalized, b.normalized);
+        // Negative for left
+        Vector3 cross = Vector3.Cross(a, b);
+        float sign = Mathf.Sign(Vector3.Dot(cross, transform.up));
+        return sign * angleBetween / 180;
     }
 }
