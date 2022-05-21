@@ -12,11 +12,11 @@ This package (`org.johnson-lab-janelia.fetch-game-physics-training`) prepares th
 
 1. Clone [this repo](https://github.com/JohnsonLabJanelia/FetchGamePhysicsTraining).
 
-1. Clone the [`janelia-unity-toolkit` repo](https://github.com/JaneliaSciComp/janelia-unity-toolkit) to get access to the [`org.janelia.easy-ml-agents` package](https://github.com/JaneliaSciComp/janelia-unity-toolkit/tree/master/org.janelia.easy-ml-agents).
+1. Clone the [`janelia-unity-toolkit` repo](https://github.com/JaneliaSciComp/janelia-unity-toolkit) to get access to the [`org.janelia.easy-ml-agents` package](https://github.com/JaneliaSciComp/janelia-unity-toolkit/tree/master/org.janelia.easy-ml-agents).  Make sure the directory (folder) for this clone is not a child (or descendent) of the other repos.
 
 1. Install the [Git Large File Storage (LFS) extension](https://git-lfs.github.com/), which is needed for cloning the next repo.
 
-1. Clone the [`FetchGamePhysics` repo](https://github.com/JohnsonLabJanelia/FetchGamePhysics) to get access to [`FetchArenaProject`](https://github.com/JohnsonLabJanelia/FetchGamePhysics/tree/main/FetchArenaProject), the actual Unity project.
+1. Clone the [`FetchGamePhysics` repo](https://github.com/JohnsonLabJanelia/FetchGamePhysics) to get access to [`FetchArenaProject`](https://github.com/JohnsonLabJanelia/FetchGamePhysics/tree/main/FetchArenaProject), the actual Unity project.  Make sure the directory (folder) for this clone is not a child (or descendent) of the other repos.
 
 1. In [Unity Hub](https://unity3d.com/get-unity/download), click the "Open" button, navigate into the downloaded `FetchGamePhysics` repo and choose the `FetchArenaProject` directory (folder).  The Unity editor should launch and load the project.  There may be an option to use a newer version of the editor, and doing so should work.  With a newer editor there may be prompts to upgrade assets, and doing so should work.
 
@@ -34,7 +34,11 @@ This package (`org.johnson-lab-janelia.fetch-game-physics-training`) prepares th
 
 1. The agent's observations and rewards are implemented in the `Runtime/FetchGamePhysicsTrainingAgent.cs` file in the `FetchGamePhysicsTraining` repo.  The current approach works, to an extent, but is quite primitive.  To try new approaches, change the observations made in the `CollectObservations` method, and the rewards assigned in the `OnActionReceived` and `OnCollisionEnter` methods.
 
-1. In the Unity editor's "GameObject" menu, choose the "Create Easy ML Arena and Agent" item.  Most of the objects in the Unity scene should now be under a new `TrainingArena` object.
+1. In the Unity editor's "GameObject" menu, choose the "Create Easy ML Arena and Agent" item.  
+
+1. A dialog will appear asking, "Use an obstacle during training?"  Press the "Yes" button to choose a more challenging training situation, with an obstacle that forces the agent to make more complex decisions to reach the ball.
+
+1. After the dialog is dismissed, the script will move most of the objects in the Unity scene under a new `TrainingArena` object.
 
 1. In the Unity editor's Hierarchy view, right click on the `TrainingArena` object and choose "Duplicate" from the context menu.  Error messages may appear ("Only the root body of the articulation can be made immovable") but they are related to the robot arms and their control with [ROS](https://github.com/Unity-Technologies/Unity-Robotics-Hub/blob/main/tutorials/ros_unity_integration/README.md), and do not seem to affect training with ML-Agents.
 

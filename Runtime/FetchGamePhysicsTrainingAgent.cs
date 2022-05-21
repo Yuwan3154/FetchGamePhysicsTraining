@@ -24,6 +24,15 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
     };
 #endif
 
+    /// <summary>
+    /// Supports adjusting the force direction to fake sliding along the obstacle.
+    /// </summary>
+    public override Vector3 MoveForwardDirection
+    {
+        get { return (_moveForwardDirection != Vector3.zero) ? _moveForwardDirection : transform.forward; }
+    }
+    private Vector3 _moveForwardDirection;
+
     private GameObject _ball;
     private Rigidbody _ballRigidBody;
 
@@ -35,10 +44,11 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
     {
         // Before calling `EasyMLAgentGrounded.Setup` (as `base.Setup`) override some parameters
         // it will use.
-        ChildSensorForwardDetectableTags = new List<string>() 
+        ChildSensorForwardDetectableTags = new List<string>()
         {
             FetchGamePhysicsTrainingArena.TAG_BOUNDARY,
-            FetchGamePhysicsTrainingArena.TAG_RAMP
+            FetchGamePhysicsTrainingArena.TAG_RAMP,
+            FetchGamePhysicsTrainingArena.TAG_OBSTACLE
         };
         ChildSensorForwardRayLength = GetTurfDiameter();
         BodyColor = "#4b3c39";
@@ -166,6 +176,9 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
                 AddFetchedReward();
             }
         }
+
+        // TODO: There is no penalty for a collision with the obstacle, to keep training from being
+        // too difficult.  Is this approach right?  Should there be no penalty for any collision?
         if (c.CompareTag(FetchGamePhysicsTrainingArena.TAG_BOUNDARY) || c.CompareTag(FetchGamePhysicsTrainingArena.TAG_RAMP))
         {
             if (trainingMode)
@@ -173,6 +186,29 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
                 Debug.Log(transform.parent.name + " adding collision penalty");
                 AddReward(-0.5f);
             }
+        }
+    }
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (collision.collider.CompareTag(FetchGamePhysicsTrainingArena.TAG_OBSTACLE))
+        {
+            // When colliding with the obstacle, hack the movement force direction to make
+            // the agent slide along the obstacle instead of getting stuck on it.  The algorithm
+            // assumes the obstacle is a plane.
+            Vector3 v = Vector3.ProjectOnPlane(transform.forward, collision.gameObject.transform.right);
+            v.Normalize();
+            _moveForwardDirection = v;
+        }
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if (collision.collider.CompareTag(FetchGamePhysicsTrainingArena.TAG_OBSTACLE))
+        {
+            // When there is no more collison with the obstacle, go back to the standard 
+            // movement force direction.
+            _moveForwardDirection = Vector3.zero;
         }
     }
 
