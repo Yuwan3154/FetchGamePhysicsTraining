@@ -46,13 +46,18 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         helper.CreateTag(TAG_RAMP);
         helper.CreateTag(TAG_GROUND);
         helper.CreateTag(TAG_OBSTACLE);
+        
+        Reparent();
+        FindTurfMetrics();
+        FindRampMetrics();
+        FindBallMetrics();
 
         string title = "FetchGamePhysicsTraining Setup";
         string message = "Use an obstacle during training?";
         bool useObstacle = helper.DisplayDialog(title, message, "Yes", "No");
         if (useObstacle)
         {
-            CreateObstacle();
+            if ((Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_OBSTACLE) == null)) CreateObstacle();
         }
         else
         {
@@ -63,12 +68,6 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         {
             name = "TrainingArena";
         }
-
-        Reparent();
-
-        FindTurfMetrics();
-        FindRampMetrics();
-        FindBallMetrics();
     }
 
     private void Reparent()
@@ -333,6 +332,11 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         {
             return;
         }
+        
+        Vector3 scale = obstacle.transform.localScale;
+        float scaleFactor = Academy.Instance.EnvironmentParameters.GetWithDefault("obstacle_scale_vs_ramp", 0.67f);
+        scale.z = scaleFactor * _rampSize.z;
+        obstacle.transform.localScale = scale;
 
         float angleLocalY = ramp.transform.localEulerAngles.y;
         /* TODO: Disabled pending detection that the ball path won't be interrupted.
@@ -379,11 +383,6 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         }
 
         obstacle.transform.localPosition = p;
-
-        Vector3 scale = obstacle.transform.localScale;
-        float scaleFactor = Academy.Instance.EnvironmentParameters.GetWithDefault("obstacle_scale_vs_ramp", 0.67f);
-        scale.z = scaleFactor * _rampSize.z;
-        obstacle.transform.localScale = scale;
     }
 
     private GameObject CreateObstacle()
