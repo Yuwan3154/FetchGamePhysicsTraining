@@ -50,12 +50,12 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
             FetchGamePhysicsTrainingArena.TAG_RAMP,
             FetchGamePhysicsTrainingArena.TAG_OBSTACLE
         };
-        ChildSensorForwardRayLength = GetTurfDiameter();
+        ChildSensorForwardRayLength = GetTurfDiameter() * 1.5f;
         BodyColor = "#4b3c39";
 
         base.Setup(helper);
 
-        moveForce = 1.0f;
+        moveForce = 6.0f;
     }
 
     /// <summary>
