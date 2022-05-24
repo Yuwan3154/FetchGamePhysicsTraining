@@ -94,7 +94,7 @@ environment_parameters:
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.8
-        value: 6
+        value: 0.68
       - name: LessonFinal
         value: 0.7
   ball_fetched_threshold:
