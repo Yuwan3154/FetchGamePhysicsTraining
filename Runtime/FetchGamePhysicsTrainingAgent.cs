@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
 using UnityEngine;
 
@@ -12,7 +13,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 {
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
-    public override int VectorObservationSize { get; protected set; } = 5;
+    public override int VectorObservationSize { get; protected set; } = 6;
 
 #if false
     // Overriding this virtual property would be an alternative to setting its value in `Setup`, but
@@ -35,6 +36,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 
     private GameObject _ball;
     private Rigidbody _ballRigidBody;
+    private float fieldOfViewDegree;
 
     /// <summary>
     /// Called after the Setup function for <see cref="FetchGamePhysicsTrainingArena"/>).
@@ -55,7 +57,21 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 
         base.Setup(helper);
 
-        moveForce = 1.0f;
+        Transform raySensorTransform = transform.Find("RaysForward");
+        if (raySensorTransform != null)
+        {
+            raySensorTransform.localPosition = new Vector3(0, BodyScale.y, BodyScale.z / 2);
+        }
+
+        // With timestep of 0.02, 4 stacked observations amounts to raysensor observation of the past 0.5 second.
+        GameObject raySensor = GameObject.Find("RaysForward");
+        RayPerceptionSensorComponent3D raySensorComponent = raySensor.GetComponent<RayPerceptionSensorComponent3D>();
+        raySensorComponent.ObservationStacks = 4;
+
+        BehaviorParameters behavior = GetComponent<BehaviorParameters>() as BehaviorParameters;
+        behavior.BrainParameters.NumStackedVectorObservations = 4;
+        
+        moveForce = 7.0f;
     }
 
     /// <summary>
@@ -97,11 +113,15 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
     /// <param name="sensor">The vector sensor</param>
     public override void CollectObservations(VectorSensor sensor)
     {
-        if ((_ball == null) || (_ballRigidBody == null))
+        float ballObserved = IsBallObservable() ? 1 : 0;
+        if ((_ball == null) || (_ballRigidBody == null) || (ballObserved == 0))
         {
             sensor.AddObservation(new float[VectorObservationSize]);
             return;
         }
+
+        // Indicator that encodes if the agent can see the ball with 1 indicating yes and 0 if not.
+        sensor.AddObservation(ballObserved);
 
         // Normalize observations to [0, 1] or [-1, 1]
         // https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Design-Agents.md#normalization
@@ -139,9 +159,6 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         sensor.AddObservation(agentSpeed);
         // One observation
         sensor.AddObservation(ballSpeed);
-
-        // Six total observations (1 + 1 + 1 + 1 + 1)
-        Debug.Assert(VectorObservationSize == 5, "Incorrect observation count");
     }
 
     /// <summary>
@@ -156,6 +173,15 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         _ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(arena, FetchGamePhysicsTrainingArena.TAG_BALL);
 
         _ballRigidBody = _ball.GetComponent<Rigidbody>();
+        
+
+        // Set the field of view degree (single direction) from the MaxRayDegree used by the raySensor.
+        GameObject raySensor = GameObject.Find("RaysForward");
+        fieldOfViewDegree = raySensor != null ? raySensor.GetComponent<RayPerceptionSensorComponent3D>().MaxRayDegrees : 180;
+        
+        // Make the agent camera view be consistent with the actual field of view set.
+        Camera agentCamera = GameObject.Find("AgentCamera").GetComponent<Camera>();
+        agentCamera.fieldOfView = fieldOfViewDegree / agentCamera.aspect * 2;
     }
 
     /// <summary>
@@ -189,34 +215,37 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         }
     }
 
-    private void OnCollisionStay(Collision collision)
-    {
-        if (collision.collider.CompareTag(FetchGamePhysicsTrainingArena.TAG_OBSTACLE))
-        {
-            // When colliding with the obstacle, hack the movement force direction to make
-            // the agent slide along the obstacle instead of getting stuck on it.  The algorithm
-            // assumes the obstacle is a plane.
-            Vector3 v = Vector3.ProjectOnPlane(transform.forward, collision.gameObject.transform.right);
-            v.Normalize();
-            _moveForwardDirection = v;
-        }
-    }
+    // private void OnCollisionStay(Collision collision)
+    // {
+    //     if (collision.collider.CompareTag(FetchGamePhysicsTrainingArena.TAG_OBSTACLE))
+    //     {
+    //         // When colliding with the obstacle, hack the movement force direction to make
+    //         // the agent slide along the obstacle instead of getting stuck on it.  The algorithm
+    //         // assumes the obstacle is a plane.
+    //         Vector3 v = Vector3.ProjectOnPlane(transform.forward, collision.gameObject.transform.right);
+    //         v.Normalize();
+    //         _moveForwardDirection = v;
+    //     }
+    // }
 
-    private void OnCollisionExit(Collision collision)
-    {
-        if (collision.collider.CompareTag(FetchGamePhysicsTrainingArena.TAG_OBSTACLE))
-        {
-            // When there is no more collison with the obstacle, go back to the standard 
-            // movement force direction.
-            _moveForwardDirection = Vector3.zero;
-        }
-    }
+    // private void OnCollisionExit(Collision collision)
+    // {
+    //     if (collision.collider.CompareTag(FetchGamePhysicsTrainingArena.TAG_OBSTACLE))
+    //     {
+    //         // When there is no more collison with the obstacle, go back to the standard 
+    //         // movement force direction.
+    //         _moveForwardDirection = Vector3.zero;
+    //     }
+    // }
 
     private void AddFetchedReward()
     {
         Vector3 toBall = (_ball.transform.position - transform.position);
-        float bonus = 0.5f * Mathf.Clamp01(Vector3.Dot(transform.forward.normalized, toBall.normalized));
-        AddReward(0.5f + bonus);
+        float speed_bonus_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("speed_bonus", 0.8f);
+        float orientation_bonus = 0.5f * (1 - speed_bonus_proportion) * Mathf.Clamp01(Vector3.Dot(transform.forward.normalized, toBall.normalized));
+        float speed_bonus = 0.5f * speed_bonus_proportion * (1 - StepCount / MaxStep);
+        AddReward(0.5f + orientation_bonus + speed_bonus);
+        Debug.Log(transform.parent.name + " successfully complete task with reward: " + GetCumulativeReward());
         EndEpisode();
     }
 
@@ -228,11 +257,25 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
 
     private float SignedAngleNormalized(Vector3 a, Vector3 b)
     {
-        // [0, 180] for left or right
-        float angleBetween = Vector3.Angle(a.normalized, b.normalized);
-        // Negative for left
-        Vector3 cross = Vector3.Cross(a, b);
-        float sign = Mathf.Sign(Vector3.Dot(cross, transform.up));
-        return sign * angleBetween / 180;
+        return Vector3.SignedAngle(a, b, transform.up) / 180;
+        // // [0, 180] for left or right
+        // float angleBetween = Vector3.Angle(a.normalized, b.normalized);
+        // // Negative for left
+        // Vector3 cross = Vector3.Cross(a, b);
+        // float sign = Mathf.Sign(Vector3.Dot(cross, transform.up));
+        // return sign * angleBetween / 180;
+    }
+
+    private bool IsBallObservable()
+    {
+        Vector3 rayInit = transform.TransformPoint(BodyScale / 3);
+        Vector3 toBall = _ball.transform.position - rayInit;
+        float distance = toBall.magnitude - _ball.transform.localScale.x;
+        float angleToBall = Vector3.SignedAngle(transform.forward, toBall, transform.up);
+        bool atFront = angleToBall < fieldOfViewDegree && angleToBall > -fieldOfViewDegree;
+        RaycastHit hit;
+        bool blocked = Physics.Raycast(rayInit, toBall, out hit, distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        if (blocked) Debug.Log("Raycast hit " + hit.collider);
+        return atFront && !blocked;
     }
 }

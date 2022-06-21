@@ -30,6 +30,10 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
     public static readonly float OBSTACLE_ANGLE_WIGGLE_DEGS = 25.0f;
 
+    public bool ballOnRamp = true;
+    public bool ballInitVel = false;
+    public float maxBallInitVelMagnitude = 2.5f;
+
     /// <summary>
     /// Performs the initial setup of the objects involved in training (except for
     /// <see cref="FetchGamePhysicsTrainingAgent"/> which has its own Setup function,
@@ -63,6 +67,12 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         {
             DestroyObstacle();
         }
+
+        message = "Spawn the ball on ramp?";
+        ballOnRamp = helper.DisplayDialog(title, message, "Yes", "No");
+
+        message = "Give the ball a random horizontal velocity?";
+        ballInitVel = helper.DisplayDialog(title, message, "Yes", "No");
 
         if (!name.StartsWith("TrainingArena"))
         {
@@ -251,10 +261,19 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
             {
                 float maxVel = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_max_angular_velocity", 7.0f);
                 ballRigidbody.maxAngularVelocity = maxVel;
+
+                if (ballInitVel)
+                {
+                    float angle = UnityEngine.Random.Range(0, 360);
+                    float speed = UnityEngine.Random.Range(1.0f, maxBallInitVelMagnitude);
+                    Vector3 v = Matrix4x4.Rotate(Quaternion.Euler(0, angle, 0)).MultiplyVector(Vector3.forward);
+                    v *= speed;
+                    ballRigidbody.velocity = v;
+                }
             }
 
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
-            if (ramp != null)
+            if ((ramp != null) && (ballOnRamp))
             {
                 Vector3 r = ramp.transform.localEulerAngles;
                 ball.transform.localEulerAngles = new Vector3(0, r.y, 0);
@@ -264,6 +283,12 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
                 // Minus because `ramp.transform.forward` points out from the turf center.
                 p -= ramp.transform.forward * 4 * _ballRadius;
                 ball.transform.localPosition = p;
+            } else
+            {
+                float angle = UnityEngine.Random.Range(0, 360);
+                float distance = UnityEngine.Random.Range(0, _turfRadius * 0.95f);
+                ball.transform.localEulerAngles = new Vector3(0, angle, 0);
+                ball.transform.localPosition = new Vector3(0, ramp.transform.localPosition.y + _rampSize.y + 2 * _ballRadius, distance);
             }
         }
     }
@@ -383,6 +408,20 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         }
 
         obstacle.transform.localPosition = p;
+        
+        float angle = 0;
+        int attempts = 0;
+        while (attempts++ < 100)
+        {
+            angle = UnityEngine.Random.Range(0, 360);
+            Quaternion q = Quaternion.Euler(0, angle + obstacle.transform.localRotation.y, 0);
+            if (Physics.OverlapBox(obstacle.transform.position, obstacle.transform.localScale / 2, q, Physics.DefaultRaycastLayers).Length == 0)
+            {
+                
+                break;
+            }
+        }
+        obstacle.transform.Rotate(0, angle, 0);
     }
 
     private GameObject CreateObstacle()
