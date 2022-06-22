@@ -173,11 +173,10 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         _ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(arena, FetchGamePhysicsTrainingArena.TAG_BALL);
 
         _ballRigidBody = _ball.GetComponent<Rigidbody>();
-        
 
         // Set the field of view degree (single direction) from the MaxRayDegree used by the raySensor.
         GameObject raySensor = GameObject.Find("RaysForward");
-        fieldOfViewDegree = raySensor != null ? raySensor.GetComponent<RayPerceptionSensorComponent3D>().MaxRayDegrees : 180;
+        fieldOfViewDegree = raySensor != null ? raySensor.GetComponent<RayPerceptionSensorComponent3D>().MaxRayDegrees : 70;
         
         // Make the agent camera view be consistent with the actual field of view set.
         Camera agentCamera = GameObject.Find("AgentCamera").GetComponent<Camera>();
