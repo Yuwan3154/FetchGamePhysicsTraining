@@ -333,6 +333,10 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
                 float rampPadding = Mathf.Max(_rampSize.x, _rampSize.z);
                 safe = Vector3.Distance(ramp.transform.localPosition, p) > padding + rampPadding;
             }
+            if (attempts == 100)
+            {
+                Debug.LogError("Could not place agent in safe configuration.");
+            }
 
             float angleLocalY = angle + 180;
             if (angleLocalY > 360)

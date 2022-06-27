@@ -3,17 +3,67 @@ using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
+using Mujoco;
+using Janelia;
+using UnityEditor;
 using UnityEngine;
 
 /// <summary>
 /// A trainable agent for the fetch game:
 /// <seealso href="https://github.com/JohnsonLabJanelia/FetchGamePhysics/tree/main/FetchArenaProject"/>
 /// </summary>
-public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
+public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 {
+    /// <summary>
+    /// The color of the agent's body mesh.
+    /// </summary>
+    public override string BodyColor
+    {
+        get { return _antBodyColor; }
+        protected set { _antBodyColor = value; }
+    }
+    private string _antBodyColor = "#ff0000";
+
+    /// <summary>
+    /// The size of the BoxCollider given to the agent by default.  Note that a value S in 
+    /// any of the dimensions means the box covers [-S/2, S/2] in that dimension.
+    /// A value of Vector3.zero prevents the collider from being added.
+    /// </summary>
+    public override Vector3 ColliderSize
+    {
+        get { return _colliderSize; }
+        protected set { _colliderSize = value; }
+    }
+    private Vector3 _colliderSize = Vector3.zero;
+
+    /// <summary>
+    /// The direction of the force on the agent for forward movement.
+    /// </summary>
+    public override Vector3 MoveForwardDirection
+    {
+        get { return transform.forward; }
+    }
+
+    /// <summary>
+    /// The actuators of the agent.
+    /// </summary>
+    private MjActuator[] _actuators
+    {
+        get { return gameObject.GetComponentsInChildren<MjActuator>(); }
+    }
+    
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
     public override int VectorObservationSize { get; protected set; } = 6;
+
+    public override int VectorActionSize 
+    {
+        get { return _antVectorActionSize; }
+        protected set { _antVectorActionSize = value; }
+    }
+    private int _antVectorActionSize = 8;
+
+    public static string ModelName { get; protected set; } = "Ant";
 
 #if false
     // Overriding this virtual property would be an alternative to setting its value in `Setup`, but
@@ -24,15 +74,6 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         FetchGamePhysicsTrainingArena.TAG_RAMP
     };
 #endif
-
-    /// <summary>
-    /// Supports adjusting the force direction to fake sliding along the obstacle.
-    /// </summary>
-    public override Vector3 MoveForwardDirection
-    {
-        get { return (_moveForwardDirection != Vector3.zero) ? _moveForwardDirection : transform.forward; }
-    }
-    private Vector3 _moveForwardDirection;
 
     private GameObject _ball;
     private Rigidbody _ballRigidBody;
@@ -55,9 +96,122 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         ChildSensorForwardRayLength = GetTurfDiameter();
         BodyColor = "#4b3c39";
 
-        base.Setup(helper);
+        helper.CreateTag(TAG_AGENT);
+        gameObject.tag = TAG_AGENT;
+        const string CAMERA_NAME = "AgentCamera";
+        Transform cameraTransform = transform.Find(CAMERA_NAME);
+        if (cameraTransform == null)
+        {
+            GameObject cameraObject = new GameObject();
+            cameraObject.name = CAMERA_NAME;
+            cameraObject.transform.parent = transform;
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.nearClipPlane = 0.01f;
+            camera.farClipPlane = 1000.0f;
+        }
 
-        Transform raySensorTransform = transform.Find("RaysForward");
+        BoxCollider collider = gameObject.GetComponent<BoxCollider>();
+        if (collider == null)
+        {
+            if (ColliderSize != Vector3.zero)
+            {
+                collider = gameObject.AddComponent<BoxCollider>();
+                collider.size = ColliderSize;
+            }
+        }
+        else
+        {
+            if (ColliderSize != Vector3.zero)
+            {
+                collider.size = ColliderSize;
+            }
+            else
+            {
+                DestroyImmediate(collider);
+            }
+        }
+
+        MaxStep = 5000;
+
+        Transform raySensorTransform;
+        const string SENSOR_OBJECT_NAME = "RaysForward";
+        BehaviorParameters behavior = GetComponent<BehaviorParameters>() as BehaviorParameters;
+        if (behavior != null)
+        {
+            behavior.BehaviorName = BehaviorName;
+            behavior.BrainParameters.VectorObservationSize = VectorObservationSize;
+            behavior.BrainParameters.ActionSpec = new ActionSpec(VectorActionSize);
+            behavior.BrainParameters.NumStackedVectorObservations = 4;
+
+            behavior.UseChildSensors = UseChildSensorForward;
+            
+            if (behavior.UseChildSensors)
+            {
+                raySensorTransform = transform.Find(SENSOR_OBJECT_NAME);
+                GameObject raySensorObject;
+                if (raySensorTransform == null)
+                {
+                    raySensorObject = new GameObject();
+                    raySensorObject.name = SENSOR_OBJECT_NAME;
+                    raySensorObject.transform.parent = transform;
+                }
+                else
+                {
+                    raySensorObject = raySensorTransform.gameObject;
+                }
+
+                RayPerceptionSensorComponent3D sensor = raySensorObject.GetComponent<RayPerceptionSensorComponent3D>();
+                if (sensor == null)
+                {
+                    sensor = raySensorObject.AddComponent<RayPerceptionSensorComponent3D>();
+                }
+                sensor.RaysPerDirection = ChildSensorForwardRaysPerDirection;
+                // A radius of 0 chooses ray casting rather than sphere casting.
+                sensor.SphereCastRadius = 0;
+                sensor.RayLength = ChildSensorForwardRayLength;
+
+                // TODO: Detect if `ChildSensorDectableTags` is overriden, and issue a warning if not?
+                sensor.DetectableTags = ChildSensorForwardDetectableTags;
+
+                raySensorObject.transform.localPosition = ChildSensorSourceOffset;
+            }
+            else
+            {
+                raySensorTransform = transform.Find(SENSOR_OBJECT_NAME);
+                if (raySensorTransform != null)
+                {
+                    DestroyImmediate(raySensorTransform.gameObject);
+                }
+            }
+        }
+
+        gameObject.name = "AntAgent";
+        const string BODY_NAME = "Body";
+        Transform bodyTransform = transform.Find(BODY_NAME);
+        GameObject body;
+
+        if (bodyTransform == null)
+        {
+            GameObject modelPrefab = AssetDatabase.LoadAssetAtPath("Assets/Prefabs/" + ModelName + ".prefab", typeof(GameObject)) as GameObject;
+            body = GameObject.Instantiate(modelPrefab, Vector3.zero, Quaternion.identity, transform);
+            body.name = BODY_NAME;
+        } else
+        {
+            body = bodyTransform.gameObject;
+        }
+
+        // Put the overall agent position at the back and bottom of the body and its collider.
+        // Doing so helps to keep the agent from "tipping" forward or backward when a force is applied.
+        float y = BodyScale.y / 2;
+        body.transform.localPosition = new Vector3(0, y, 0);
+
+        Camera childCamera = GetComponentInChildren<Camera>();
+        if (childCamera != null)
+        {
+            childCamera.transform.localPosition = new Vector3(0, 2 * y, y);
+        }
+
+        raySensorTransform = transform.Find(SENSOR_OBJECT_NAME);
         if (raySensorTransform != null)
         {
             raySensorTransform.localPosition = new Vector3(0, BodyScale.y, BodyScale.z / 2);
@@ -66,12 +220,7 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         // With timestep of 0.02, 4 stacked observations amounts to raysensor observation of the past 0.5 second.
         GameObject raySensor = GameObject.Find("RaysForward");
         RayPerceptionSensorComponent3D raySensorComponent = raySensor.GetComponent<RayPerceptionSensorComponent3D>();
-        raySensorComponent.ObservationStacks = 4;
-
-        BehaviorParameters behavior = GetComponent<BehaviorParameters>() as BehaviorParameters;
-        behavior.BrainParameters.NumStackedVectorObservations = 4;
-        
-        moveForce = 7.0f;
+        raySensorComponent.ObservationStacks = 4;  
     }
 
     /// <summary>
@@ -81,8 +230,17 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
     /// <param name="actions">Action to take</param>
     public override void OnActionReceived(ActionBuffers actions)
     {
-        // The `EasyMLAgentGround` base class handles everything except the assignment of rewards.
         base.OnActionReceived(actions);
+
+        if (_frozen)
+        {
+            return;
+        }
+
+        for (int index = 0; index < _actuators.Length; index++)
+        {
+            _actuators[index].Control = actions.ContinuousActions[index] * Time.fixedDeltaTime;
+        }
 
         // https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Design-Agents.md#rewards-summary--best-practices
         // "If you want the agent to finish a task quickly, it is often helpful to provide a small penalty every step
@@ -161,6 +319,17 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         sensor.AddObservation(ballSpeed);
     }
 
+    /// When behavior type is set to "Heuristic only" on the agent's behavior parameters,
+    /// then this function will be called.  Its return value will be fed into
+    /// <see cref="OnActionReceived(ActionBuffers)"/> and the neural network is ignored.
+    /// </summary>
+    /// <param name="actionsOut">An output action buffer</param>
+    public override void Heuristic(in ActionBuffers actionsOut)
+    {
+        /// Log an error to show that Heuristic is not supported.
+        Debug.Log("Heuristic is not supported for this agent.", this);
+    }
+
     /// <summary>
     /// Called on the frame when a script is enabled just before any of the Update methods 
     /// are called the first time.
@@ -183,36 +352,36 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
         agentCamera.fieldOfView = fieldOfViewDegree / agentCamera.aspect * 2;
     }
 
-    /// <summary>
-    /// Called when the agent collides with another scene object.
-    /// </summary>
-    /// <param name="collision">The collision info</param>
-    private void OnCollisionEnter(Collision collision)
-    {
-        Collider c = collision.collider;
-        if (c.CompareTag(FetchGamePhysicsTrainingArena.TAG_BALL))
-        {
-            // Disable any collision response that might put the ball or agent in a bad position.
-            _ballRigidBody.Sleep();
-            _agentRigidbody.Sleep();
+    // /// <summary>
+    // /// Called when the agent collides with another scene object.
+    // /// </summary>
+    // /// <param name="collision">The collision info</param>
+    // private void OnCollisionEnter(Collision collision)
+    // {
+    //     Collider c = collision.collider;
+    //     if (c.CompareTag(FetchGamePhysicsTrainingArena.TAG_BALL))
+    //     {
+    //         // Disable any collision response that might put the ball or agent in a bad position.
+    //         _ballRigidBody.Sleep();
+    //         _agentRigidbody.Sleep();
 
-            if (trainingMode)
-            {
-                AddFetchedReward();
-            }
-        }
+    //         if (trainingMode)
+    //         {
+    //             AddFetchedReward();
+    //         }
+    //     }
 
-        // TODO: There is no penalty for a collision with the obstacle, to keep training from being
-        // too difficult.  Is this approach right?  Should there be no penalty for any collision?
-        if (c.CompareTag(FetchGamePhysicsTrainingArena.TAG_BOUNDARY) || c.CompareTag(FetchGamePhysicsTrainingArena.TAG_RAMP))
-        {
-            if (trainingMode)
-            {
-                Debug.Log(transform.parent.name + " adding collision penalty");
-                AddReward(-0.5f);
-            }
-        }
-    }
+    //     // TODO: There is no penalty for a collision with the obstacle, to keep training from being
+    //     // too difficult.  Is this approach right?  Should there be no penalty for any collision?
+    //     if (c.CompareTag(FetchGamePhysicsTrainingArena.TAG_BOUNDARY) || c.CompareTag(FetchGamePhysicsTrainingArena.TAG_RAMP))
+    //     {
+    //         if (trainingMode)
+    //         {
+    //             Debug.Log(transform.parent.name + " adding collision penalty");
+    //             AddReward(-0.5f);
+    //         }
+    //     }
+    // }
 
     // private void OnCollisionStay(Collision collision)
     // {
@@ -257,12 +426,6 @@ public class FetchGamePhysicsTrainingAgent : Janelia.EasyMLAgentGrounded
     private float SignedAngleNormalized(Vector3 a, Vector3 b)
     {
         return Vector3.SignedAngle(a, b, transform.up) / 180;
-        // // [0, 180] for left or right
-        // float angleBetween = Vector3.Angle(a.normalized, b.normalized);
-        // // Negative for left
-        // Vector3 cross = Vector3.Cross(a, b);
-        // float sign = Mathf.Sign(Vector3.Dot(cross, transform.up));
-        // return sign * angleBetween / 180;
     }
 
     private bool IsBallObservable()

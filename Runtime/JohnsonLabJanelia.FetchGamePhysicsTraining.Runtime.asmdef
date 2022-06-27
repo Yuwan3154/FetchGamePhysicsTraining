@@ -1,10 +1,11 @@
 {
     "name": "JohnsonLabJanelia.FetchGamePhysicsTraining.Runtime",
+    "rootNamespace": "",
     "references": [
         "Janelia.Easy-ml-agents.Runtime",
-        "Unity.ML-Agents"
+        "Unity.ML-Agents",
+        "Mujoco.Runtime"
     ],
-    "optionalUnityReferences": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
@@ -12,5 +13,6 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": []
+    "versionDefines": [],
+    "noEngineReferences": false
 }
