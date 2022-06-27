@@ -61,7 +61,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         bool useObstacle = helper.DisplayDialog(title, message, "Yes", "No");
         if (useObstacle)
         {
-            if ((Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_OBSTACLE) == null)) CreateObstacle();
+            CreateObstacle();
         }
         else
         {
@@ -426,7 +426,13 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
     private GameObject CreateObstacle()
     {
-        GameObject obstacle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        GameObject obstacle = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_OBSTACLE);
+        if (obstacle != null)
+        {
+            return obstacle;
+        }
+
+        obstacle = GameObject.CreatePrimitive(PrimitiveType.Cube);
         obstacle.name = "Obstacle";
         obstacle.tag = TAG_OBSTACLE;
         obstacle.transform.parent = transform;
