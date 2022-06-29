@@ -19,10 +19,10 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     /// </summary>
     public override string BodyColor
     {
-        get { return _antBodyColor; }
-        protected set { _antBodyColor = value; }
+        get { return _walkerBodyColor; }
+        protected set { _walkerBodyColor = value; }
     }
-    private string _antBodyColor = "#ff0000";
+    private string _walkerBodyColor = "#ff0000";
 
     /// <summary>
     /// The size of the BoxCollider given to the agent by default.  Note that a value S in 
@@ -45,6 +45,17 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     }
 
     /// <summary>
+        /// The size of the agent's body mesh.  If the body covers [-S/2, S/2] in a dimension
+        /// then the size should be S in that dimension.
+        /// </summary>
+        public override Vector3 BodyScale
+        {
+            get { return _walkerBodyScale; }
+            protected set { _walkerBodyScale = value; }
+        }
+        private Vector3 _walkerBodyScale = new Vector3(0.1f, 0.1f, 0.1f);
+
+    /// <summary>
     /// The actuators of the agent.
     /// </summary>
     private MjActuator[] _actuators
@@ -54,16 +65,18 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
+    const string BODY_NAME = "Body";
+
     public override int VectorObservationSize { get; protected set; } = 6;
 
     public override int VectorActionSize 
     {
-        get { return _antVectorActionSize; }
-        protected set { _antVectorActionSize = value; }
+        get { return _walkerVectorActionSize; }
+        protected set { _walkerVectorActionSize = value; }
     }
-    private int _antVectorActionSize = 8;
+    private int _walkerVectorActionSize = 8;
 
-    public static string ModelName { get; protected set; } = "Ant";
+    public static string ModelName { get; protected set; } = "Walker";
 
 #if false
     // Overriding this virtual property would be an alternative to setting its value in `Setup`, but
@@ -77,7 +90,11 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 
     private GameObject _ball;
     private Rigidbody _ballRigidBody;
+    private Transform _bodyTransform;
     private float fieldOfViewDegree;
+    private Transform[] allChildrenTransform;
+    private Dictionary<Transform, Vector3> positionDict = new Dictionary<Transform, Vector3>();
+    private Dictionary<Transform, Quaternion> rotationDict = new Dictionary<Transform, Quaternion>();
 
     /// <summary>
     /// Called after the Setup function for <see cref="FetchGamePhysicsTrainingArena"/>).
@@ -185,36 +202,37 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             }
         }
 
-        gameObject.name = "AntAgent";
-        const string BODY_NAME = "Body";
-        Transform bodyTransform = transform.Find(BODY_NAME);
-        GameObject body;
-
-        if (bodyTransform == null)
+        gameObject.name = "WalkerAgent";
+        _bodyTransform = transform.Find(BODY_NAME);
+        GameObject _body;
+        if (_bodyTransform == null)
         {
-            GameObject modelPrefab = AssetDatabase.LoadAssetAtPath("Assets/Prefabs/" + ModelName + ".prefab", typeof(GameObject)) as GameObject;
-            body = GameObject.Instantiate(modelPrefab, Vector3.zero, Quaternion.identity, transform);
-            body.name = BODY_NAME;
+            GameObject modelPrefab = helper.LoadPrefab(ModelName);
+            _body = GameObject.Instantiate(modelPrefab, Vector3.zero, Quaternion.identity, transform);
+            _body.name = BODY_NAME;
         } else
         {
-            body = bodyTransform.gameObject;
+            _body = _bodyTransform.gameObject;
         }
+        _body.transform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
 
         // Put the overall agent position at the back and bottom of the body and its collider.
         // Doing so helps to keep the agent from "tipping" forward or backward when a force is applied.
         float y = BodyScale.y / 2;
-        body.transform.localPosition = new Vector3(0, y, 0);
+        _body.transform.localPosition = new Vector3(0, y, 0);
 
         Camera childCamera = GetComponentInChildren<Camera>();
         if (childCamera != null)
         {
             childCamera.transform.localPosition = new Vector3(0, 2 * y, y);
+            childCamera.transform.parent = _body.transform;
         }
 
         raySensorTransform = transform.Find(SENSOR_OBJECT_NAME);
         if (raySensorTransform != null)
         {
             raySensorTransform.localPosition = new Vector3(0, BodyScale.y, BodyScale.z / 2);
+            raySensorTransform.parent = _body.transform;
         }
 
         // With timestep of 0.02, 4 stacked observations amounts to raysensor observation of the past 0.5 second.
@@ -236,10 +254,23 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         {
             return;
         }
+        if (Vector3.Distance(_ball.transform.localPosition, new Vector3(0, _ball.transform.localPosition.y, 0)) > GetTurfDiameter() * 0.45f)
+        {
+            Debug.Log("Ball falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
+            EndEpisode();
+            return;
+        }
+        if (Vector3.Distance(_bodyTransform.position, new Vector3(0,_bodyTransform.position.y, 0)) > GetTurfDiameter() * 0.45f)
+        {
+            SetReward(-1.0f);
+            Debug.Log("Agent falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
+            EndEpisode();
+            return;
+        }
 
         for (int index = 0; index < _actuators.Length; index++)
         {
-            _actuators[index].Control = actions.ContinuousActions[index] * Time.fixedDeltaTime;
+            _actuators[index].Control = Mathf.Clamp(actions.ContinuousActions[index], -1.0f, 1.0f) * Time.fixedDeltaTime;
         }
 
         // https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Design-Agents.md#rewards-summary--best-practices
@@ -248,19 +279,19 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         // with the end of the episode by calling EndEpisode() on the agent when it has accomplished its goal."
         // Also, the total penalty over all the steps should not exceed 1.
 
-        float perStepPenalty = -1.0f / (float)MaxStep;
+        float perStepPenalty = -1.0f / (float) MaxStep;
         AddReward(perStepPenalty);
 
         if (_ball != null)
         {
-            float ballFetchedThreshold = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_fetched_threshold", 0.0f);
+            float ballFetchedThreshold = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_fetched_threshold", 0.02f);
             float thresholdDistance = ballFetchedThreshold * GetTurfDiameter();
             float distanceToBall = Vector3.Distance(transform.position, _ball.transform.position);
 
             if (distanceToBall < thresholdDistance)
             {
                 Debug.Log(transform.parent.name + " distance " + distanceToBall + " is within ball_fetched_threshold distance " + thresholdDistance);
-                AddFetchedReward();
+                SetFetchedReward();
             }
         }
     }
@@ -305,16 +336,16 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         sensor.AddObservation(angleVelocity);
 
         // Normalize
-        float agentSpeed = _agentRigidbody.velocity.magnitude / turfDiameter;
+        // float agentSpeed = _agentRigidbody.velocity.magnitude / turfDiameter;
         float ballSpeed = ballVelocity.magnitude / turfDiameter;
 
         // But this normalization may make the values very small, so use a heuristic to increase them
         float speedScale = 4.0f;
-        agentSpeed = Mathf.Clamp01(agentSpeed * speedScale);
+        // agentSpeed = Mathf.Clamp01(agentSpeed * speedScale);
         ballSpeed = Mathf.Clamp01(ballSpeed * speedScale);
 
         // One observation
-        sensor.AddObservation(agentSpeed);
+        // sensor.AddObservation(agentSpeed);
         // One observation
         sensor.AddObservation(ballSpeed);
     }
@@ -341,8 +372,6 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         GameObject arena = transform.parent.gameObject;
         _ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(arena, FetchGamePhysicsTrainingArena.TAG_BALL);
 
-        _ballRigidBody = _ball.GetComponent<Rigidbody>();
-
         // Set the field of view degree (single direction) from the MaxRayDegree used by the raySensor.
         GameObject raySensor = GameObject.Find("RaysForward");
         fieldOfViewDegree = raySensor != null ? raySensor.GetComponent<RayPerceptionSensorComponent3D>().MaxRayDegrees : 70;
@@ -350,6 +379,36 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         // Make the agent camera view be consistent with the actual field of view set.
         Camera agentCamera = GameObject.Find("AgentCamera").GetComponent<Camera>();
         agentCamera.fieldOfView = fieldOfViewDegree / agentCamera.aspect * 2;
+
+        allChildrenTransform = transform.GetComponentsInChildren<Transform>();
+        foreach (Transform childTransform in allChildrenTransform)
+        {
+            positionDict.Add(childTransform, childTransform.localPosition);
+            rotationDict.Add(childTransform, childTransform.localRotation);
+        }
+
+        _bodyTransform = transform.Find(BODY_NAME);
+    }
+
+    /// <summary>
+    /// Called by ML-Agents each time an episode begins.  Used to trigger random placement
+    /// of objects in the arena (the class derived from <see cref="EasyMLArena"/>).
+    /// </summary>
+    public override void OnEpisodeBegin()
+    {
+        GameObject scene = GameObject.Find("MjScene");
+        if (scene != null)
+        {
+            scene.GetComponent<MjScene>().DestroyScene();
+        }
+
+        base.OnEpisodeBegin();
+
+        if (scene != null)
+        {
+            scene.GetComponent<MjScene>().DestroyScene();
+            scene.GetComponent<MjScene>().CreateScene();
+        }
     }
 
     // /// <summary>
@@ -367,7 +426,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 
     //         if (trainingMode)
     //         {
-    //             AddFetchedReward();
+    //             SetFetchedReward();
     //         }
     //     }
 
@@ -406,13 +465,14 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     //     }
     // }
 
-    private void AddFetchedReward()
+    private void SetFetchedReward()
     {
         Vector3 toBall = (_ball.transform.position - transform.position);
         float speed_bonus_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("speed_bonus", 0.8f);
         float orientation_bonus = 0.5f * (1 - speed_bonus_proportion) * Mathf.Clamp01(Vector3.Dot(transform.forward.normalized, toBall.normalized));
-        float speed_bonus = 0.5f * speed_bonus_proportion * (1 - StepCount / MaxStep);
-        AddReward(0.5f + orientation_bonus + speed_bonus);
+        float speed_bonus = 0.5f * speed_bonus_proportion * (1 - ((float) StepCount / (float) MaxStep));
+        float final_reward = 0.5f + orientation_bonus + speed_bonus - 1.0f * ((float) StepCount / (float) MaxStep);
+        SetReward(final_reward);
         Debug.Log(transform.parent.name + " successfully complete task with reward: " + GetCumulativeReward());
         EndEpisode();
     }
@@ -439,5 +499,14 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         bool blocked = Physics.Raycast(rayInit, toBall, out hit, distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         if (blocked) Debug.Log("Raycast hit " + hit.collider);
         return atFront && !blocked;
+    }
+
+    private void ResetAgentState()
+    {
+        foreach (Transform childTransform in allChildrenTransform)
+        {
+            childTransform.localPosition = positionDict[childTransform];
+            childTransform.localRotation = rotationDict[childTransform];
+        }
     }
 }

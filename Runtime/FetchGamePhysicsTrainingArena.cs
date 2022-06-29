@@ -1,5 +1,6 @@
 using Unity.MLAgents;
 using UnityEngine;
+using Mujoco;
 
 /// <summary>
 /// An arena for training an agent in the fetch game:
@@ -32,6 +33,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
     public bool ballOnRamp = true;
     public bool ballInitVel = false;
+    public float minBallInitVelMagnitude = 0.5f;
     public float maxBallInitVelMagnitude = 2.5f;
 
     /// <summary>
@@ -77,6 +79,15 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         if (!name.StartsWith("TrainingArena"))
         {
             name = "TrainingArena";
+        }
+    }
+
+    private void LateUpdate()
+    {
+        GameObject scene = GameObject.Find("MjScene");
+        if (scene != null)
+        {
+            scene.GetComponent<MjScene>().SyncUnityToMjState();
         }
     }
 
@@ -256,20 +267,12 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         GameObject ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_BALL);
         if (ball != null)
         {
-            Rigidbody ballRigidbody = ball.GetComponent<Rigidbody>();
-            if (ballRigidbody != null)
+            // Reset the ball to its original orientation for stable behavior in Mujoco.
+            for (int index = 0; index < ball.transform.childCount; index++)
             {
-                float maxVel = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_max_angular_velocity", 7.0f);
-                ballRigidbody.maxAngularVelocity = maxVel;
-
-                if (ballInitVel)
-                {
-                    float angle = UnityEngine.Random.Range(0, 360);
-                    float speed = UnityEngine.Random.Range(1.0f, maxBallInitVelMagnitude);
-                    Vector3 v = Matrix4x4.Rotate(Quaternion.Euler(0, angle, 0)).MultiplyVector(Vector3.forward);
-                    v *= speed;
-                    ballRigidbody.velocity = v;
-                }
+                Transform ballChild = ball.transform.GetChild(index);
+                ballChild.localRotation = Quaternion.identity;
+                ballChild.localPosition = Vector3.zero;
             }
 
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
@@ -286,9 +289,9 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
             } else
             {
                 float angle = UnityEngine.Random.Range(0, 360);
-                float distance = UnityEngine.Random.Range(0, _turfRadius * 0.95f);
+                float distance = UnityEngine.Random.Range(0, _turfRadius * 0.85f);
                 ball.transform.localEulerAngles = new Vector3(0, angle, 0);
-                ball.transform.localPosition = new Vector3(0, ramp.transform.localPosition.y + _rampSize.y + 2 * _ballRadius, distance);
+                ball.transform.localPosition = new Vector3(0, ramp.transform.localPosition.y + 1.0f * _ballRadius, distance);
             }
         }
     }
@@ -299,12 +302,26 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         if (agent != null)
         {
             Transform agentBody = agent.transform.Find("Body");
-            Vector3 agentScale = (agentBody != null) ? agentBody.localScale : Vector3.one;
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
+            
+            // Reset the agent to its original orientation for stable behavior in Mujoco.
+            for (int index = 0; index < agentBody.childCount; index++)
+            {
+                Transform agentChild = agentBody.GetChild(index);
+                agentChild.localRotation = Quaternion.identity;
+                agentChild.localPosition = Vector3.zero;
+            }
+
+            // Multiplied by 2 because the agent is larger than the corresponding ideal Unity objects.
+            Vector3 agentScale = (agentBody != null) ? Vector3.Scale(agentBody.localScale, new Vector3(3.5f, 3.5f, 3.5f)) : Vector3.one;
 
             bool safe = false;
             float angle = 0;
             int attempts = 0;
+            GameObject ball = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_BALL);
+            float ballFetchedThreshold = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_fetched_threshold", 0.02f);
+            float thresholdDistance = ballFetchedThreshold * TurfRadius * 2.0f;
+            
             while (!safe && (attempts++ < 100))
             {
                 angle = UnityEngine.Random.Range(0, 360);
@@ -313,7 +330,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
                 if ((ramp != null) && (UnityEngine.Random.value < AGENT_EASY_CASE_PROBABILITY))
                 {
                     p = ramp.transform.localPosition;
-                    float d = UnityEngine.Random.Range(_rampSize.z, p.magnitude + _turfRadius - padding);
+                    float d = UnityEngine.Random.Range(_rampSize.z, p.magnitude + _turfRadius - padding) * 0.9f;
                     // Minus because `ramp.transform.forward` points out from the turf center.
                     Vector3 q = -ramp.transform.forward;
                     p += d * q;
@@ -331,7 +348,8 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
                 // Continue trying placements until there is a safe configuration, with the agent's
                 // body not overlapping the ramp.
                 float rampPadding = Mathf.Max(_rampSize.x, _rampSize.z);
-                safe = Vector3.Distance(ramp.transform.localPosition, p) > padding + rampPadding;
+                float distanceToBall = Vector3.Distance(agent.transform.position, ball.transform.position);
+                safe = (Vector3.Distance(ramp.transform.localPosition, p) > padding + rampPadding) & (distanceToBall > thresholdDistance);
             }
             if (attempts == 100)
             {
@@ -404,7 +422,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
             // If there is no room along the vector to the agent, give up on having the obstacle
             // block the agent's view of the ball.
             Transform agentBody = agent.transform.Find("Body");
-            Vector3 agentScale = (agentBody != null) ? agentBody.localScale : Vector3.one;
+            Vector3 agentScale = (agentBody != null) ? Vector3.Scale(agentBody.localScale, new Vector3(3.5f, 3.5f, 3.5f)) : Vector3.one;
 
             Vector3 offset = toAgentRight;
             offset += toAgentRight.normalized * (obstacle.transform.localScale.x + agentScale.x);
