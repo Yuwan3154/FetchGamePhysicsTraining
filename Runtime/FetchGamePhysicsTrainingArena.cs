@@ -82,14 +82,14 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         }
     }
 
-    private void LateUpdate()
-    {
-        GameObject scene = GameObject.Find("MjScene");
-        if (scene != null)
-        {
-            scene.GetComponent<MjScene>().SyncUnityToMjState();
-        }
-    }
+    // private void LateUpdate()
+    // {
+    //     GameObject scene = GameObject.Find("MjScene");
+    //     if (scene != null)
+    //     {
+    //         scene.GetComponent<MjScene>().SyncUnityToMjState();
+    //     }
+    // }
 
     private void Reparent()
     {
