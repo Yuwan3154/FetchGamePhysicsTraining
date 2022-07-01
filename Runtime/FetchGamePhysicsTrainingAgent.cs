@@ -260,7 +260,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             EndEpisode();
             return;
         }
-        if (Vector3.Distance(_bodyTransform.position, new Vector3(0,_bodyTransform.position.y, 0)) > GetTurfDiameter() * 0.45f)
+        if (Vector3.Distance(transform.localPosition, new Vector3(0,transform.localPosition.y, 0)) > GetTurfDiameter() * 0.45f)
         {
             SetReward(-1.0f);
             Debug.Log("Agent falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
