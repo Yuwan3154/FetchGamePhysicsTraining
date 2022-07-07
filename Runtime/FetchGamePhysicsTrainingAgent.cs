@@ -93,6 +93,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     private Transform _bodyTransform;
     private float fieldOfViewDegree;
     private Transform[] allChildrenTransform;
+    private Vector3 _episodeStartPosition;
     private Dictionary<Transform, Vector3> positionDict = new Dictionary<Transform, Vector3>();
     private Dictionary<Transform, Quaternion> rotationDict = new Dictionary<Transform, Quaternion>();
 
@@ -256,13 +257,14 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         }
         if (Vector3.Distance(_ball.transform.localPosition, new Vector3(0, _ball.transform.localPosition.y, 0)) > GetTurfDiameter() * 0.45f)
         {
+            AddMovementReward();
             Debug.Log("Ball falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
             EndEpisode();
             return;
         }
         if (Vector3.Distance(transform.localPosition, new Vector3(0,transform.localPosition.y, 0)) > GetTurfDiameter() * 0.45f)
         {
-            SetReward(-1.0f);
+            AddReward(-1.0f * (1 - ((float) StepCount / (float) MaxStep)));
             Debug.Log("Agent falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
             EndEpisode();
             return;
@@ -291,8 +293,13 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             if (distanceToBall < thresholdDistance)
             {
                 Debug.Log(transform.parent.name + " distance " + distanceToBall + " is within ball_fetched_threshold distance " + thresholdDistance);
-                SetFetchedReward();
+                AddMovementReward();
+                AddFetchedReward();
             }
+        } else if (StepCount == MaxStep - 1)
+        {
+            // Add a movement distance reward at the end of the episode if nothing falls out of the field but ball is not fetched.
+            AddMovementReward();
         }
     }
 
@@ -396,6 +403,8 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     /// </summary>
     public override void OnEpisodeBegin()
     {
+        // I'm not sure if this is the best way to do this (destroying the scene and creating it). But it works.
+        // TODO: Find a better way to do this.
         GameObject scene = GameObject.Find("MjScene");
         if (scene != null)
         {
@@ -403,7 +412,8 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         }
 
         base.OnEpisodeBegin();
-
+        _episodeStartPosition = transform.localPosition;
+        
         if (scene != null)
         {
             scene.GetComponent<MjScene>().DestroyScene();
@@ -426,7 +436,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 
     //         if (trainingMode)
     //         {
-    //             SetFetchedReward();
+    //             AddFetchedReward();
     //         }
     //     }
 
@@ -465,16 +475,24 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     //     }
     // }
 
-    private void SetFetchedReward()
+    private void AddFetchedReward()
     {
         Vector3 toBall = (_ball.transform.position - transform.position);
         float speed_bonus_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("speed_bonus", 0.8f);
+        float movement_reward_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
         float orientation_bonus = 0.5f * (1 - speed_bonus_proportion) * Mathf.Clamp01(Vector3.Dot(transform.forward.normalized, toBall.normalized));
         float speed_bonus = 0.5f * speed_bonus_proportion * (1 - ((float) StepCount / (float) MaxStep));
-        float final_reward = 0.5f + orientation_bonus + speed_bonus - 1.0f * ((float) StepCount / (float) MaxStep);
-        SetReward(final_reward);
+        float final_reward = 0.5f + orientation_bonus + speed_bonus;
+        AddReward(final_reward * (1 - movement_reward_proportion));
         Debug.Log(transform.parent.name + " successfully complete task with reward: " + GetCumulativeReward());
         EndEpisode();
+    }
+
+    private void AddMovementReward()
+    {
+        float movement_reward_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
+        float movement_reward = movement_reward_proportion * Vector3.Distance(_episodeStartPosition, transform.localPosition) / GetTurfDiameter();
+        AddReward(movement_reward);
     }
 
     private float GetTurfDiameter()
