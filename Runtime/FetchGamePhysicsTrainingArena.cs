@@ -25,6 +25,8 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
     private Vector3 _rampSize = Vector3.zero;
 
     private float _ballRadius = 0.0f;
+    private GameObject _mjTurf;
+    private GameObject _mjSphere;
 
     public static readonly float RAMP_ANGLE_WIGGLE_DEGS = 10.0f;
     public static readonly float AGENT_EASY_CASE_PROBABILITY = 0.0f;
@@ -57,13 +59,15 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         FindTurfMetrics();
         FindRampMetrics();
         FindBallMetrics();
+        CreateMjTurf(helper);
+        CreateMjSphere(helper);
 
         string title = "FetchGamePhysicsTraining Setup";
         string message = "Use an obstacle during training?";
         bool useObstacle = helper.DisplayDialog(title, message, "Yes", "No");
         if (useObstacle)
         {
-            if ((Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_OBSTACLE) == null)) CreateObstacle();
+            if ((Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_OBSTACLE) == null)) CreateObstacle(helper);
         }
         else
         {
@@ -81,15 +85,6 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
             name = "TrainingArena";
         }
     }
-
-    // private void LateUpdate()
-    // {
-    //     GameObject scene = GameObject.Find("MjScene");
-    //     if (scene != null)
-    //     {
-    //         scene.GetComponent<MjScene>().SyncUnityToMjState();
-    //     }
-    // }
 
     private void Reparent()
     {
@@ -116,7 +111,8 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
         Reparent("Table");
         Reparent("HollowCyl");
-        GameObject sphere = Reparent("Sphere");
+        // Using MjSphere instead of the regular sphere to work with the mujoco engine
+        GameObject sphere = Reparent("MjSphere");
         if (sphere != null)
         {
             sphere.tag = TAG_BALL;
@@ -153,6 +149,27 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         return null;
     }
 
+    private void CreateMjTurf(Janelia.IEasyMLSetupHelper helper)
+    {
+        _mjTurf = GameObject.Find("MjTurf");
+        if (_mjTurf == null)
+        {
+            _mjTurf = GameObject.Instantiate(helper.LoadPrefab("MjTurf"), transform);
+            _mjTurf.transform.localPosition = new Vector3(0.0f, _turfY, 0.0f);
+        }
+        _mjTurf.name = "MjTurf";
+    }
+
+    private void CreateMjSphere(Janelia.IEasyMLSetupHelper helper)
+    {
+        _mjSphere = GameObject.Find("MjSphere");
+        if (_mjSphere == null)
+        {
+            _mjSphere = GameObject.Instantiate(helper.LoadPrefab("MjSphere"), transform);
+        }
+        _mjSphere.name = "MjSphere";
+    }
+
     private void CleanupUnused()
     {
         Deactivate("Cube");
@@ -160,6 +177,19 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         Deactivate("Publisher");
         Deactivate("Canvas");
         Deactivate("EventSystem");
+        Deactivate("Table");
+        Deactivate("HollowCyl");
+        Deactivate("Bumblebee");
+        Deactivate("Grimlock");
+        Deactivate("Optimus");
+        Deactivate("VentionFrame");
+        Deactivate("Sphere");
+
+        // The mesh collider for the ramp is not working properly, so hide it for now. Not deactivating 
+        // it because its positions is still needed for placement of other objects.
+        GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
+        ramp.GetComponent<MeshCollider>().enabled = false;
+        ramp.GetComponent<MeshRenderer>().enabled = false;
     }
 
     private void Deactivate(string name)
@@ -301,7 +331,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         GameObject agent = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, Janelia.EasyMLAgent.TAG_AGENT);
         if (agent != null)
         {
-            Transform agentBody = agent.transform.Find("Body");
+            Transform agentBody = agent.transform.Find("torso");
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
             
             // Reset the agent to its original orientation for stable behavior in Mujoco.
@@ -446,10 +476,11 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         obstacle.transform.Rotate(0, angle, 0);
     }
 
-    private GameObject CreateObstacle()
+    private GameObject CreateObstacle(Janelia.IEasyMLSetupHelper helper)
     {
-        GameObject obstacle = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        obstacle.name = "Obstacle";
+        string obstacleName = "MjObstacle";
+        GameObject obstacle = GameObject.Instantiate(helper.LoadPrefab(obstacleName));
+        obstacle.name = obstacleName;
         obstacle.tag = TAG_OBSTACLE;
         obstacle.transform.parent = transform;
 

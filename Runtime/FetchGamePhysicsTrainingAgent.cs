@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using static System.Array;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
@@ -58,16 +59,18 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     /// <summary>
     /// The actuators of the agent.
     /// </summary>
-    private MjActuator[] _actuators
-    {
-        get { return gameObject.GetComponentsInChildren<MjActuator>(); }
-    }
+    private MjActuator[] _actuators;
+
+    /// <summary>
+    /// The sensors of the agent.
+    /// </summary>
+    private MjJointScalarSensor[] _sensors;
     
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
-    const string BODY_NAME = "Body";
+    const string BODY_NAME = "torso";
 
-    public override int VectorObservationSize { get; protected set; } = 6;
+    public override int VectorObservationSize { get; protected set; } = 19;
 
     public override int VectorActionSize 
     {
@@ -89,7 +92,6 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 #endif
 
     private GameObject _ball;
-    private Rigidbody _ballRigidBody;
     private Transform _bodyTransform;
     private float fieldOfViewDegree;
     private Transform[] allChildrenTransform;
@@ -113,11 +115,35 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         };
         ChildSensorForwardRayLength = GetTurfDiameter();
         BodyColor = "#4b3c39";
-
         helper.CreateTag(TAG_AGENT);
         gameObject.tag = TAG_AGENT;
+        gameObject.name = "WalkerAgent";
+
+        GameObject _body;
+        _bodyTransform = transform.Find(BODY_NAME);
+        if (_bodyTransform == null)
+        {
+            // Load the prefab and move the children gameobjects to the agent.
+            GameObject modelPrefab = helper.LoadPrefab(ModelName);
+            GameObject prefabGameObject = GameObject.Instantiate(modelPrefab, Vector3.zero, Quaternion.identity, transform);
+            while (prefabGameObject.transform.childCount > 0)
+            {
+                prefabGameObject.transform.GetChild(0).parent = transform;
+            }
+            DestroyImmediate(prefabGameObject);
+            _bodyTransform = transform.Find(BODY_NAME);
+        }
+        _body = _bodyTransform.gameObject;
+        _body.transform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
+
+        // Move the Mujoco global settings outside of the arena since only one of this can exist.
+        GameObject mjGlobalSetting = GameObject.Find("Global Settings");
+        mjGlobalSetting.transform.parent = null;
+        MjGlobalSettings mjGlobalSettingComponent = mjGlobalSetting.GetComponent<MjGlobalSettings>();
+        mjGlobalSettingComponent.GlobalOptions.Wind = Vector3.zero;
+
         const string CAMERA_NAME = "AgentCamera";
-        Transform cameraTransform = transform.Find(CAMERA_NAME);
+        Transform cameraTransform = _bodyTransform.Find(CAMERA_NAME);
         if (cameraTransform == null)
         {
             GameObject cameraObject = new GameObject();
@@ -165,13 +191,13 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             
             if (behavior.UseChildSensors)
             {
-                raySensorTransform = transform.Find(SENSOR_OBJECT_NAME);
+                raySensorTransform = _bodyTransform.Find(SENSOR_OBJECT_NAME);
                 GameObject raySensorObject;
                 if (raySensorTransform == null)
                 {
                     raySensorObject = new GameObject();
                     raySensorObject.name = SENSOR_OBJECT_NAME;
-                    raySensorObject.transform.parent = transform;
+                    raySensorObject.transform.parent = _bodyTransform;
                 }
                 else
                 {
@@ -190,7 +216,6 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 
                 // TODO: Detect if `ChildSensorDectableTags` is overriden, and issue a warning if not?
                 sensor.DetectableTags = ChildSensorForwardDetectableTags;
-
                 raySensorObject.transform.localPosition = ChildSensorSourceOffset;
             }
             else
@@ -203,20 +228,6 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             }
         }
 
-        gameObject.name = "WalkerAgent";
-        _bodyTransform = transform.Find(BODY_NAME);
-        GameObject _body;
-        if (_bodyTransform == null)
-        {
-            GameObject modelPrefab = helper.LoadPrefab(ModelName);
-            _body = GameObject.Instantiate(modelPrefab, Vector3.zero, Quaternion.identity, transform);
-            _body.name = BODY_NAME;
-        } else
-        {
-            _body = _bodyTransform.gameObject;
-        }
-        _body.transform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
-
         // Put the overall agent position at the back and bottom of the body and its collider.
         // Doing so helps to keep the agent from "tipping" forward or backward when a force is applied.
         float y = BodyScale.y / 2;
@@ -226,20 +237,19 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         if (childCamera != null)
         {
             childCamera.transform.localPosition = new Vector3(0, 2 * y, y);
-            childCamera.transform.parent = _body.transform;
+            childCamera.transform.parent = _bodyTransform;
         }
 
-        raySensorTransform = transform.Find(SENSOR_OBJECT_NAME);
+        raySensorTransform = _bodyTransform.Find(SENSOR_OBJECT_NAME);
         if (raySensorTransform != null)
         {
             raySensorTransform.localPosition = new Vector3(0, BodyScale.y, BodyScale.z / 2);
-            raySensorTransform.parent = _body.transform;
-        }
+            raySensorTransform.parent = _bodyTransform;
 
-        // With timestep of 0.02, 4 stacked observations amounts to raysensor observation of the past 0.5 second.
-        GameObject raySensor = GameObject.Find("RaysForward");
-        RayPerceptionSensorComponent3D raySensorComponent = raySensor.GetComponent<RayPerceptionSensorComponent3D>();
-        raySensorComponent.ObservationStacks = 4;  
+            // With timestep of 0.02, 4 stacked observations amounts to raysensor observation of the past 0.5 second.
+            RayPerceptionSensorComponent3D raySensorComponent = raySensorTransform.gameObject.GetComponent<RayPerceptionSensorComponent3D>();
+            raySensorComponent.ObservationStacks = 4;
+        }
     }
 
     /// <summary>
@@ -295,12 +305,12 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
                 Debug.Log(transform.parent.name + " distance " + distanceToBall + " is within ball_fetched_threshold distance " + thresholdDistance);
                 AddMovementReward();
                 AddFetchedReward();
+            }else if (StepCount ==  MaxStep)
+            {
+                // Add a movement distance reward at the end of the episode if nothing falls out of the field but ball is not fetched.
+                AddMovementReward();
             }
-        } else if (StepCount == MaxStep - 1)
-        {
-            // Add a movement distance reward at the end of the episode if nothing falls out of the field but ball is not fetched.
-            AddMovementReward();
-        }
+        } 
     }
 
     /// <summary>
@@ -310,7 +320,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     public override void CollectObservations(VectorSensor sensor)
     {
         float ballObserved = IsBallObservable() ? 1 : 0;
-        if ((_ball == null) || (_ballRigidBody == null) || (ballObserved == 0))
+        if ((_ball == null) || (ballObserved == 0))
         {
             sensor.AddObservation(new float[VectorObservationSize]);
             return;
@@ -332,29 +342,40 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         float turfDiameter = GetTurfDiameter();
         sensor.AddObservation(toBall.magnitude / turfDiameter);
 
-        Vector3 ballVelocity = _ballRigidBody.velocity;
+        
+        // TODO: Fix the following observation by accessing the Mujoco version of these readings.
 
-        // Angle will be 0 if the ball is moving directly away from the agent,
-        // or if the ball is not moving.  Angle will be negative if the ball is moving
-        // to the left of the agent's forward direction, and positive for the right.
-        // Angle will be 1 (or maybe -1) if the ball is moving directly towards the agent.
-        float angleVelocity = SignedAngleNormalized(transform.forward, ballVelocity);
-        // One observation
-        sensor.AddObservation(angleVelocity);
+        // Vector3 ballVelocity = _ballRigidBody.velocity;
 
-        // Normalize
-        // float agentSpeed = _agentRigidbody.velocity.magnitude / turfDiameter;
-        float ballSpeed = ballVelocity.magnitude / turfDiameter;
+        // // Angle will be 0 if the ball is moving directly away from the agent,
+        // // or if the ball is not moving.  Angle will be negative if the ball is moving
+        // // to the left of the agent's forward direction, and positive for the right.
+        // // Angle will be 1 (or maybe -1) if the ball is moving directly towards the agent.
+        // float angleVelocity = SignedAngleNormalized(transform.forward, ballVelocity);
+        // // One observation
+        // sensor.AddObservation(angleVelocity);
 
-        // But this normalization may make the values very small, so use a heuristic to increase them
-        float speedScale = 4.0f;
-        // agentSpeed = Mathf.Clamp01(agentSpeed * speedScale);
-        ballSpeed = Mathf.Clamp01(ballSpeed * speedScale);
+        // // Normalize
+        // // float agentSpeed = _agentRigidbody.velocity.magnitude / turfDiameter;
+        // float ballSpeed = ballVelocity.magnitude / turfDiameter;
 
-        // One observation
-        // sensor.AddObservation(agentSpeed);
-        // One observation
-        sensor.AddObservation(ballSpeed);
+        // // But this normalization may make the values very small, so use a heuristic to increase them
+        // float speedScale = 4.0f;
+        // // agentSpeed = Mathf.Clamp01(agentSpeed * speedScale);
+        // ballSpeed = Mathf.Clamp01(ballSpeed * speedScale);
+
+        // // One observation
+        // // sensor.AddObservation(agentSpeed);
+        // // One observation
+        // sensor.AddObservation(ballSpeed);
+
+        // Sixteen observations
+        // Eight actuators, each having both the position and velocity of the corresponding joint
+        foreach (MjJointScalarSensor mjJointScalarSensor in _sensors)
+        {
+            Debug.Log("Collecting sensor readings for joint " + mjJointScalarSensor.Joint.gameObject.name + " with value " + mjJointScalarSensor.SensorReading);
+            sensor.AddObservation((float) mjJointScalarSensor.SensorReading);
+        }
     }
 
     /// When behavior type is set to "Heuristic only" on the agent's behavior parameters,
@@ -394,6 +415,13 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             rotationDict.Add(childTransform, childTransform.localRotation);
         }
 
+        // Store the actuators and sensors and sort by name of the gameobject to ensure stable order of iteration.
+        _actuators = gameObject.GetComponentsInChildren<MjActuator>();
+        System.Array.Sort(_actuators, (x, y) => x.gameObject.name.CompareTo(y.gameObject.name));
+        _sensors = gameObject.GetComponentsInChildren<MjJointScalarSensor>();
+        System.Array.Sort(_sensors, (x, y) => x.gameObject.name.CompareTo(y.gameObject.name));
+        Debug.Log("Found " + _actuators.Length + " actuators and " + _sensors.Length + " sensors.");
+
         _bodyTransform = transform.Find(BODY_NAME);
     }
 
@@ -412,7 +440,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         }
 
         base.OnEpisodeBegin();
-        _episodeStartPosition = transform.localPosition;
+        _episodeStartPosition = _bodyTransform.localPosition;
         
         if (scene != null)
         {
@@ -491,8 +519,9 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     private void AddMovementReward()
     {
         float movement_reward_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
-        float movement_reward = movement_reward_proportion * Vector3.Distance(_episodeStartPosition, transform.localPosition) / GetTurfDiameter();
+        float movement_reward = movement_reward_proportion * Vector3.Distance(_episodeStartPosition, _bodyTransform.localPosition) / GetTurfDiameter();
         AddReward(movement_reward);
+        Debug.Log(transform.parent.name + " movement reward: " + Vector3.Distance(_episodeStartPosition, _bodyTransform.localPosition) / GetTurfDiameter());
     }
 
     private float GetTurfDiameter()
