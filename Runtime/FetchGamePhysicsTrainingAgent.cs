@@ -373,7 +373,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         // Eight actuators, each having both the position and velocity of the corresponding joint
         foreach (MjJointScalarSensor mjJointScalarSensor in _sensors)
         {
-            Debug.Log("Collecting sensor readings for joint " + mjJointScalarSensor.Joint.gameObject.name + " with value " + mjJointScalarSensor.SensorReading);
+            // Debug.Log("Collecting sensor readings for joint " + mjJointScalarSensor.Joint.gameObject.name + " with value " + mjJointScalarSensor.SensorReading);
             sensor.AddObservation((float) mjJointScalarSensor.SensorReading);
         }
     }
