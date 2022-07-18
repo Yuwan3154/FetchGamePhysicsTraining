@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using static System.Array;
+using static System.Linq.Enumerable;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
@@ -93,6 +94,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 
     private GameObject _ball;
     private Transform _bodyTransform;
+    private GameObject _modelPrefab;
     private float fieldOfViewDegree;
     private Transform[] allChildrenTransform;
     private Vector3 _episodeStartPosition;
@@ -124,8 +126,8 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         if (_bodyTransform == null)
         {
             // Load the prefab and move the children gameobjects to the agent.
-            GameObject modelPrefab = helper.LoadPrefab(ModelName);
-            GameObject prefabGameObject = GameObject.Instantiate(modelPrefab, Vector3.zero, Quaternion.identity, transform);
+            _modelPrefab = helper.LoadPrefab(ModelName);
+            GameObject prefabGameObject = GameObject.Instantiate(_modelPrefab, Vector3.zero, Quaternion.identity, transform);
             while (prefabGameObject.transform.childCount > 0)
             {
                 prefabGameObject.transform.GetChild(0).parent = transform;
@@ -249,6 +251,13 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             // With timestep of 0.02, 4 stacked observations amounts to raysensor observation of the past 0.5 second.
             RayPerceptionSensorComponent3D raySensorComponent = raySensorTransform.gameObject.GetComponent<RayPerceptionSensorComponent3D>();
             raySensorComponent.ObservationStacks = 4;
+        }
+
+        allChildrenTransform = transform.Find(BODY_NAME).GetComponentsInChildren<Transform>();
+        foreach (Transform childTransform in allChildrenTransform)
+        {
+            positionDict.Add(childTransform, childTransform.localPosition);
+            rotationDict.Add(childTransform, childTransform.localRotation);
         }
     }
 
@@ -376,6 +385,8 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             // Debug.Log("Collecting sensor readings for joint " + mjJointScalarSensor.Joint.gameObject.name + " with value " + mjJointScalarSensor.SensorReading);
             sensor.AddObservation((float) mjJointScalarSensor.SensorReading);
         }
+
+        // 
     }
 
     /// When behavior type is set to "Heuristic only" on the agent's behavior parameters,
@@ -408,7 +419,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         Camera agentCamera = GameObject.Find("AgentCamera").GetComponent<Camera>();
         agentCamera.fieldOfView = fieldOfViewDegree / agentCamera.aspect * 2;
 
-        allChildrenTransform = transform.GetComponentsInChildren<Transform>();
+        allChildrenTransform = transform.Find(BODY_NAME).GetComponentsInChildren<Transform>();
         foreach (Transform childTransform in allChildrenTransform)
         {
             positionDict.Add(childTransform, childTransform.localPosition);
@@ -506,22 +517,44 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     private void AddFetchedReward()
     {
         Vector3 toBall = (_ball.transform.position - transform.position);
-        float speed_bonus_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("speed_bonus", 0.8f);
-        float movement_reward_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
-        float orientation_bonus = 0.5f * (1 - speed_bonus_proportion) * Mathf.Clamp01(Vector3.Dot(transform.forward.normalized, toBall.normalized));
-        float speed_bonus = 0.5f * speed_bonus_proportion * (1 - ((float) StepCount / (float) MaxStep));
-        float final_reward = 0.5f + orientation_bonus + speed_bonus;
-        AddReward(final_reward * (1 - movement_reward_proportion));
+        float speedBonusProportion = Academy.Instance.EnvironmentParameters.GetWithDefault("speed_bonus", 0.8f);
+        float movementRewardProportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
+        float orientationBonue = 0.5f * (1 - speedBonusProportion) * Mathf.Clamp01(Vector3.Dot(transform.forward.normalized, toBall.normalized));
+        float speedBonus = 0.5f * speedBonusProportion * (1 - ((float) StepCount / (float) MaxStep));
+        float finalReward = 0.5f + orientationBonue + speedBonus;
+        AddReward(finalReward * (1 - movementRewardProportion));
         Debug.Log(transform.parent.name + " successfully complete task with reward: " + GetCumulativeReward());
         EndEpisode();
     }
 
     private void AddMovementReward()
     {
-        float movement_reward_proportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
-        float movement_reward = movement_reward_proportion * Vector3.Distance(_episodeStartPosition, _bodyTransform.localPosition) / GetTurfDiameter();
-        AddReward(movement_reward);
-        Debug.Log(transform.parent.name + " movement reward: " + Vector3.Distance(_episodeStartPosition, _bodyTransform.localPosition) / GetTurfDiameter());
+        float movementRewardProportion = Academy.Instance.EnvironmentParameters.GetWithDefault("movement_reward", 0f);
+        // Multiplied by a factor so that it's not too small to be ignored and clamped so that total reward is reasonable.
+        float factor = 10f;
+        float distanceMoved = Vector3.Distance(_episodeStartPosition, _bodyTransform.localPosition) / GetTurfDiameter(); // Standardized by the arena diameter.
+        float movementReward = movementRewardProportion * Mathf.Clamp(factor * distanceMoved, 0, 1);
+        AddReward(movementReward);
+        Debug.Log(transform.parent.name + " movement reward: " + movementReward + " by moving " + Vector3.Distance(_episodeStartPosition, _bodyTransform.localPosition) / GetTurfDiameter());
+    }
+
+    private void AddJointSpeedReward()
+    {
+        float jointSpeedRewardFactor = Academy.Instance.EnvironmentParameters.GetWithDefault("joint_speed_reward_factor", 0.001f);
+        
+        List<double> jointSpeeds = new List<double>();
+        foreach (MjJointScalarSensor sensor in _sensors)
+        {
+            if (sensor.SensorType == MjJointScalarSensor.AvailableSensors.JointVel)
+            {
+                jointSpeeds.Add(sensor.SensorReading);
+                Debug.Log(sensor.Joint.gameObject.name + " joint speed: " + sensor.SensorReading);
+            }
+        }
+        
+        float jointSpeedReward = jointSpeeds.Count > 0 ? (float) jointSpeeds.Average() * jointSpeedRewardFactor : 0f;
+        AddReward(jointSpeedReward);
+        Debug.Log(transform.parent.name + " joint speed reward: " + jointSpeedReward);
     }
 
     private float GetTurfDiameter()
@@ -548,12 +581,28 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         return atFront && !blocked;
     }
 
-    private void ResetAgentState()
+    public void ResetAgentState()
     {
-        foreach (Transform childTransform in allChildrenTransform)
-        {
-            childTransform.localPosition = positionDict[childTransform];
-            childTransform.localRotation = rotationDict[childTransform];
-        }
+        // if (_bodyTransform != null)
+        // {
+        //     DestroyImmediate(_bodyTransform.gameObject);
+            
+        //     _modelPrefab = helper.LoadPrefab(ModelName);
+        //     GameObject prefabGameObject = GameObject.Instantiate(_modelPrefab, Vector3.zero, Quaternion.identity, transform);
+        //     while (prefabGameObject.transform.childCount > 0)
+        //     {
+        //         prefabGameObject.transform.GetChild(0).parent = transform;
+        //     }
+        //     DestroyImmediate(prefabGameObject);
+        //     _bodyTransform = transform.Find(BODY_NAME);
+        // }
+        // _body = _bodyTransform.gameObject;
+        // _body.transform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
+
+        // foreach (Transform childTransform in allChildrenTransform)
+        // {
+        //     childTransform.localPosition = positionDict[childTransform];
+        //     childTransform.localRotation = rotationDict[childTransform];
+        // }
     }
 }

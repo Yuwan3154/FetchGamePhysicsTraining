@@ -217,7 +217,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
     }
 
     public override void PlaceRandomly()
-    {
+    {    
         FindTurfMetrics();
         FindRampMetrics();
         FindBallMetrics();
@@ -331,6 +331,8 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         GameObject agent = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, Janelia.EasyMLAgent.TAG_AGENT);
         if (agent != null)
         {
+            agent.GetComponent<FetchGamePhysicsTrainingAgent>().ResetAgentState();
+            
             Transform agentBody = agent.transform.Find("torso");
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
             
