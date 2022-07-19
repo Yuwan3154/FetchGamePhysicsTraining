@@ -19,6 +19,10 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         get { return _turfRadius; }
     }
     private float _turfRadius = 0.0f;
+    public float TurfY
+    {
+        get { return _turfY; }
+    }
     private float _turfY = 0.0f;
     private float _turfThickness = 0.0f;
 
@@ -27,7 +31,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
     private float _ballRadius = 0.0f;
     private GameObject _mjTurf;
     private GameObject _mjSphere;
-
+    private bool onePlusEpisode = false;
     public static readonly float RAMP_ANGLE_WIGGLE_DEGS = 10.0f;
     public static readonly float AGENT_EASY_CASE_PROBABILITY = 0.0f;
 
@@ -37,6 +41,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
     public bool ballInitVel = false;
     public float minBallInitVelMagnitude = 0.5f;
     public float maxBallInitVelMagnitude = 2.5f;
+    
 
     /// <summary>
     /// Performs the initial setup of the objects involved in training (except for
@@ -183,7 +188,6 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         Deactivate("Grimlock");
         Deactivate("Optimus");
         Deactivate("VentionFrame");
-        Deactivate("Sphere");
 
         // The mesh collider for the ramp is not working properly, so hide it for now. Not deactivating 
         // it because its positions is still needed for placement of other objects.
@@ -218,6 +222,12 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
     public override void PlaceRandomly()
     {    
+        GameObject scene = GameObject.Find("MjScene");
+        if (scene != null)
+        {
+            scene.GetComponent<MjScene>().DestroyScene();
+        }
+
         FindTurfMetrics();
         FindRampMetrics();
         FindBallMetrics();
@@ -225,6 +235,14 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         PlaceBall();
         PlaceAgent();
         PlaceObstacle();
+
+        if (scene != null)
+        {
+            scene.GetComponent<MjScene>().CreateScene();
+            Debug.Break();
+        }
+
+        onePlusEpisode = true;
     }
 
     private void FindTurfMetrics()
@@ -331,8 +349,11 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         GameObject agent = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, Janelia.EasyMLAgent.TAG_AGENT);
         if (agent != null)
         {
-            agent.GetComponent<FetchGamePhysicsTrainingAgent>().ResetAgentState();
-            
+            if (onePlusEpisode)
+            {
+                agent.GetComponent<FetchGamePhysicsTrainingAgent>().ResetAgentState();
+            }
+
             Transform agentBody = agent.transform.Find("torso");
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
             

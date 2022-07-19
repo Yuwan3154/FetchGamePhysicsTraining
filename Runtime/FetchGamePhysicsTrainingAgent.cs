@@ -70,6 +70,8 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     public override string BehaviorName { get; protected set; } = "FetchGamePhysics";
 
     const string BODY_NAME = "torso";
+    const string CAMERA_NAME = "AgentCamera";
+    const string SENSOR_OBJECT_NAME = "RaysForward";
 
     public override int VectorObservationSize { get; protected set; } = 19;
 
@@ -94,7 +96,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
 
     private GameObject _ball;
     private Transform _bodyTransform;
-    private GameObject _modelPrefab;
+    public GameObject _modelPrefab;
     private float fieldOfViewDegree;
     private Transform[] allChildrenTransform;
     private Vector3 _episodeStartPosition;
@@ -136,7 +138,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             _bodyTransform = transform.Find(BODY_NAME);
         }
         _body = _bodyTransform.gameObject;
-        _body.transform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
+        _bodyTransform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
 
         // Move the Mujoco global settings outside of the arena since only one of this can exist.
         GameObject mjGlobalSetting = GameObject.Find("Global Settings");
@@ -144,7 +146,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         MjGlobalSettings mjGlobalSettingComponent = mjGlobalSetting.GetComponent<MjGlobalSettings>();
         mjGlobalSettingComponent.GlobalOptions.Wind = Vector3.zero;
 
-        const string CAMERA_NAME = "AgentCamera";
+        
         Transform cameraTransform = _bodyTransform.Find(CAMERA_NAME);
         if (cameraTransform == null)
         {
@@ -180,7 +182,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         MaxStep = 5000;
 
         Transform raySensorTransform;
-        const string SENSOR_OBJECT_NAME = "RaysForward";
+        
         BehaviorParameters behavior = GetComponent<BehaviorParameters>() as BehaviorParameters;
         if (behavior != null)
         {
@@ -233,7 +235,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         // Put the overall agent position at the back and bottom of the body and its collider.
         // Doing so helps to keep the agent from "tipping" forward or backward when a force is applied.
         float y = BodyScale.y / 2;
-        _body.transform.localPosition = new Vector3(0, y, 0);
+        _bodyTransform.localPosition = new Vector3(0, y, 0);
 
         Camera childCamera = GetComponentInChildren<Camera>();
         if (childCamera != null)
@@ -253,11 +255,14 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             raySensorComponent.ObservationStacks = 4;
         }
 
-        allChildrenTransform = transform.Find(BODY_NAME).GetComponentsInChildren<Transform>();
-        foreach (Transform childTransform in allChildrenTransform)
+        if (positionDict.Count == 0)
         {
-            positionDict.Add(childTransform, childTransform.localPosition);
-            rotationDict.Add(childTransform, childTransform.localRotation);
+            allChildrenTransform = transform.Find(BODY_NAME).GetComponentsInChildren<Transform>();
+            foreach (Transform childTransform in allChildrenTransform)
+            {
+                positionDict.Add(childTransform, childTransform.localPosition);
+                rotationDict.Add(childTransform, childTransform.localRotation);
+            }
         }
     }
 
@@ -274,14 +279,14 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         {
             return;
         }
-        if (Vector3.Distance(_ball.transform.localPosition, new Vector3(0, _ball.transform.localPosition.y, 0)) > GetTurfDiameter() * 0.45f)
+        if (Vector3.Distance(_ball.transform.localPosition, new Vector3(0, GetTurfY(), 0)) > GetTurfDiameter() * 0.45f)
         {
             AddMovementReward();
             Debug.Log("Ball falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
             EndEpisode();
             return;
         }
-        if (Vector3.Distance(transform.localPosition, new Vector3(0,transform.localPosition.y, 0)) > GetTurfDiameter() * 0.45f)
+        if (Vector3.Distance(transform.localPosition, new Vector3(0, GetTurfY(), 0)) > GetTurfDiameter() * 0.45f)
         {
             AddReward(-1.0f * (1 - ((float) StepCount / (float) MaxStep)));
             Debug.Log("Agent falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
@@ -563,6 +568,12 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         return (fetchArena != null) ? 2.0f * fetchArena.TurfRadius : 1.0f;
     }
 
+    private float GetTurfY()
+    {
+        FetchGamePhysicsTrainingArena fetchArena = GetComponentInParent<FetchGamePhysicsTrainingArena>();
+        return (fetchArena != null) ? fetchArena.TurfY : 0.0f;
+    }
+
     private float SignedAngleNormalized(Vector3 a, Vector3 b)
     {
         return Vector3.SignedAngle(a, b, transform.up) / 180;
@@ -585,19 +596,33 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     {
         // if (_bodyTransform != null)
         // {
-        //     DestroyImmediate(_bodyTransform.gameObject);
+        //     // Move the camera and raycast out of the deleted agent torso.
+        //     Transform camera = _bodyTransform.transform.Find(CAMERA_NAME);
+        //     Transform raycast = _bodyTransform.transform.Find(SENSOR_OBJECT_NAME);
+        //     camera.parent = transform;
+        //     raycast.parent = transform;
             
-        //     _modelPrefab = helper.LoadPrefab(ModelName);
+        //     // Destroy the old agent.
+        //     DestroyImmediate(_bodyTransform.gameObject);
+        //     DestroyImmediate(transform.Find("actuators").gameObject);
+        //     DestroyImmediate(transform.Find("sensors").gameObject);
+            
+        //     // Instantiate a new agent and move the gameobjects under this gameobject.
         //     GameObject prefabGameObject = GameObject.Instantiate(_modelPrefab, Vector3.zero, Quaternion.identity, transform);
-        //     while (prefabGameObject.transform.childCount > 0)
-        //     {
-        //         prefabGameObject.transform.GetChild(0).parent = transform;
-        //     }
+        //     prefabGameObject.transform.Find(BODY_NAME).parent = transform;
+        //     prefabGameObject.transform.Find("actuators").parent = transform;
+        //     prefabGameObject.transform.Find("sensors").parent = transform;
+        //     DestroyImmediate(prefabGameObject.transform.Find("Global Settings").gameObject);
+
+        //     // Delete the empty gameobject instantiated by the prefab.
         //     DestroyImmediate(prefabGameObject);
         //     _bodyTransform = transform.Find(BODY_NAME);
+
+        //     // Move the camera and raycast back to the new agent torso.
+        //     camera.parent = _bodyTransform;
+        //     raycast.parent = _bodyTransform;
         // }
-        // _body = _bodyTransform.gameObject;
-        // _body.transform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
+        // _bodyTransform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
 
         // foreach (Transform childTransform in allChildrenTransform)
         // {
