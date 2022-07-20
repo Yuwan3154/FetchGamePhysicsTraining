@@ -239,10 +239,10 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         if (scene != null)
         {
             scene.GetComponent<MjScene>().CreateScene();
-            Debug.Break();
         }
 
         onePlusEpisode = true;
+        Debug.Break();
     }
 
     private void FindTurfMetrics()
@@ -356,17 +356,20 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
             Transform agentBody = agent.transform.Find("torso");
             GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
-            
-            // Reset the agent to its original orientation for stable behavior in Mujoco.
-            for (int index = 0; index < agentBody.childCount; index++)
-            {
-                Transform agentChild = agentBody.GetChild(index);
-                agentChild.localRotation = Quaternion.identity;
-                agentChild.localPosition = Vector3.zero;
-            }
 
             // Multiplied by 2 because the agent is larger than the corresponding ideal Unity objects.
-            Vector3 agentScale = (agentBody != null) ? Vector3.Scale(agentBody.localScale, new Vector3(3.5f, 3.5f, 3.5f)) : Vector3.one;
+            Vector3 agentScale = (agentBody != null) ? Vector3.Scale(agentBody.localScale, new Vector3(2f, 1.5f, 2f)) : Vector3.one;
+
+            // // Set the agent to be in the middle of the arena and move the body only.
+            // agent.transform.localPosition = new Vector3(0, _turfY + _turfThickness + agentScale.y, 0);
+
+            // // Reset the agent to its original orientation for stable behavior in Mujoco.
+            // for (int index = 0; index < agentBody.childCount; index++)
+            // {
+            //     Transform agentChild = agentBody.GetChild(index);
+            //     agentChild.localRotation = Quaternion.identity;
+            //     agentChild.localPosition = Vector3.zero;
+            // }
 
             bool safe = false;
             float angle = 0;
@@ -375,10 +378,11 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
             float ballFetchedThreshold = Academy.Instance.EnvironmentParameters.GetWithDefault("ball_fetched_threshold", 0.02f);
             float thresholdDistance = ballFetchedThreshold * TurfRadius * 2.0f;
             
+            Vector3 p = Vector3.zero;
             while (!safe && (attempts++ < 100))
             {
                 angle = UnityEngine.Random.Range(0, 360);
-                Vector3 p = Vector3.zero;
+                p = Vector3.zero;
                 float padding = Mathf.Max(agentScale.x, agentScale.z);
                 if ((ramp != null) && (UnityEngine.Random.value < AGENT_EASY_CASE_PROBABILITY))
                 {
@@ -391,30 +395,34 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
                 else
                 {
                     p = Matrix4x4.Rotate(Quaternion.Euler(0, angle, 0)).MultiplyVector(Vector3.forward);
-                    p.y = ramp.transform.localPosition.y;
                     float radius = UnityEngine.Random.Range(0, _turfRadius - padding);
                     p *= radius;
                 }
                 p.y = _turfY + _turfThickness / 2;
-                agent.transform.localPosition = p;
-
+                
                 // Continue trying placements until there is a safe configuration, with the agent's
-                // body not overlapping the ramp.
-                float rampPadding = Mathf.Max(_rampSize.x, _rampSize.z);
+                // body not overlapping the ramp and/or ball is too close to the agent.
                 float distanceToBall = Vector3.Distance(agent.transform.position, ball.transform.position);
-                safe = (Vector3.Distance(ramp.transform.localPosition, p) > padding + rampPadding) & (distanceToBall > thresholdDistance);
+
+                // // If ramp is used.
+                // float rampPadding = Mathf.Max(_rampSize.x, _rampSize.z);
+                // safe = (Vector3.Distance(ramp.transform.localPosition, p) > padding + rampPadding) & (distanceToBall > thresholdDistance);
+
+                // If ramp is not used.
+                safe = (distanceToBall > thresholdDistance);
             }
             if (attempts == 100)
             {
                 Debug.LogError("Could not place agent in safe configuration.");
             }
-
+            
             float angleLocalY = angle + 180;
             if (angleLocalY > 360)
             {
                 angleLocalY -= 360;
             }
-            agent.transform.localEulerAngles = new Vector3(0, angleLocalY, 0);
+            agent.transform.localPosition = p;
+            agentBody.localEulerAngles = new Vector3(0, angleLocalY, 0);
         }
     }
 
@@ -428,6 +436,7 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
 
         GameObject ramp = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, TAG_RAMP);
         GameObject agent = Janelia.EasyMLRuntimeUtils.FindChildWithTag(gameObject, Janelia.EasyMLAgent.TAG_AGENT);
+        Transform agentBody;
         if ((ramp == null) || (agent == null))
         {
             return;
@@ -474,8 +483,8 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         {
             // If there is no room along the vector to the agent, give up on having the obstacle
             // block the agent's view of the ball.
-            Transform agentBody = agent.transform.Find("Body");
-            Vector3 agentScale = (agentBody != null) ? Vector3.Scale(agentBody.localScale, new Vector3(3.5f, 3.5f, 3.5f)) : Vector3.one;
+            agentBody = agent.transform.Find("torso");
+            Vector3 agentScale = (agentBody != null) ? Vector3.Scale(agentBody.localScale, new Vector3(2f, 1.5f, 2f)) : Vector3.one;
 
             Vector3 offset = toAgentRight;
             offset += toAgentRight.normalized * (obstacle.transform.localScale.x + agentScale.x);
@@ -486,15 +495,25 @@ public class FetchGamePhysicsTrainingArena : Janelia.EasyMLArena
         
         float angle = 0;
         int attempts = 0;
+        agentBody = agent.transform.Find("torso");
         while (attempts++ < 100)
         {
             angle = UnityEngine.Random.Range(0, 360);
             Quaternion q = Quaternion.Euler(0, angle + obstacle.transform.localRotation.y, 0);
-            if (Physics.OverlapBox(obstacle.transform.position, obstacle.transform.localScale / 2, q, Physics.DefaultRaycastLayers).Length == 0)
-            {
+            
+            // // Overlap box based detection.
+            // if (Physics.OverlapBox(obstacle.transform.position, obstacle.transform.localScale / 2, q, Physics.DefaultRaycastLayers).Length == 0)
+            // {
                 
+            //     break;
+            // }
+
+            // Distance based detection.
+            if (Vector3.Distance(agentBody.position, obstacle.transform.position) > obstacle.transform.localScale.z + Mathf.Max(agentBody.localScale.x, agentBody.localScale.z))
+            {
                 break;
             }
+
         }
         obstacle.transform.Rotate(0, angle, 0);
     }

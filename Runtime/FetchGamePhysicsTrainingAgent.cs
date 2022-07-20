@@ -286,7 +286,7 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
             EndEpisode();
             return;
         }
-        if (Vector3.Distance(transform.localPosition, new Vector3(0, GetTurfY(), 0)) > GetTurfDiameter() * 0.45f)
+        if (Vector3.Distance(_bodyTransform.localPosition, new Vector3(0, GetTurfY(), 0)) > GetTurfDiameter() * 0.45f)
         {
             AddReward(-1.0f * (1 - ((float) StepCount / (float) MaxStep)));
             Debug.Log("Agent falls out of the field; " + transform.parent.name + " exit with reward: " + GetCumulativeReward());
@@ -401,8 +401,14 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
     /// <param name="actionsOut">An output action buffer</param>
     public override void Heuristic(in ActionBuffers actionsOut)
     {
-        /// Log an error to show that Heuristic is not supported.
-        Debug.Log("Heuristic is not supported for this agent.", this);
+        // Give random inputs to the agent.
+        ActionSegment<float> continuouActions = actionsOut.ContinuousActions;
+        
+        continuouActions[0] = UnityEngine.Random.Range(-1f, 1f);
+        continuouActions[1] = UnityEngine.Random.Range(-1f, 1f);
+
+        continuouActions[0] = 0f;
+        continuouActions[1] = 0f;
     }
 
     /// <summary>
@@ -624,10 +630,15 @@ public class FetchGamePhysicsTrainingAgent : EasyMLAgentGrounded
         // }
         // _bodyTransform.localScale = new Vector3(BodyScale.x, BodyScale.y, BodyScale.z);
 
+
         // foreach (Transform childTransform in allChildrenTransform)
         // {
         //     childTransform.localPosition = positionDict[childTransform];
         //     childTransform.localRotation = rotationDict[childTransform];
         // }
+
+
+        // Reset the rotational state of the agent torso.
+        _bodyTransform.localRotation = Quaternion.identity;
     }
 }
